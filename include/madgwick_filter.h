@@ -1,7 +1,7 @@
 #ifndef MADGWICK_FILTER_H
 #define MADGWICK_FILTER_H
 
-#include "mpu6050.h"
+#include "sensor.h"
 #include <MadgwickAHRS.h>
 
 
@@ -11,15 +11,15 @@ class madgwick_filter {
 	float mad_pitch;
 	float mad_yaw;
 
-	int16_t ax, ay, az;
-	int16_t gx, gy, gz;	
+	//int16_t ax, ay, az;
+	//int16_t gx, gy, gz;	
 	
 	float q0, q1, q2, q3;
 	
 	public:
 		Madgwick madgwick;
 		MPU6050_user* mpu_user;
-		madgwick_filter(MPU6050_user* inst_mpu) : madgwick(), mpu_user(inst_mpu) {}
+		madgwick_filter(MPU6050_user* inst_mpu) : mpu_user(inst_mpu) {}
 
 		void init();
 		void update();

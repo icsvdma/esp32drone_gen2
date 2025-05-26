@@ -1,5 +1,5 @@
-#ifndef MPU6050_H
-#define MPU6050_H
+#ifndef SENSOR_H
+#define SENSOR_H
 
 #include "driver/i2c.h"
 
@@ -27,23 +27,23 @@
 #define Accel_Y 1185
 #define Accel_Z 2226
 
-MPU6050 mpu_host;
-
 class MPU6050_user {
 	
 	private:
-		char *TAG = "MPU6050";
 		i2c_port_t i2c_port;
 		uint8_t dev_addr = 0x68;
-
+		
 		uint8_t data[14];
 		int16_t ax, ay, az;
 		int16_t gx, gy, gz;
-
+	
 	public:
+		char *TAG = "MPU6050";
+		MPU6050 mpu_host;
+
 		MPU6050_user(i2c_port_t port);
 		esp_err_t init();
-		//esp_err_t read_accel_gyro(float &angle_x, float &angle_y);
+		esp_err_t read_accel_gyro(float &angle_x, float &angle_y);
 		unsigned char mpu_read(int addr);
 		void mpu_write_data();
 		esp_err_t read_raw_data(uint8_t reg, int16_t &value);
@@ -57,7 +57,12 @@ class MPU6050_user {
 		int16_t getGz();
 
 		esp_err_t init_mpu();
-		esp_err_t read_accel_gyro();
+
+		void debug_sensor();
+		//esp_err_t read_accel_gyro();
+
+		static void taskUpdate(void *param);
+		void start();
 };
 
 #endif

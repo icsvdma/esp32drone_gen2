@@ -1,7 +1,4 @@
-#include "mpu6050.h"
-#include "esp_log.h"
-#include <math.h>
-
+#include "sensor.h"
 
 MPU6050_user::MPU6050_user(i2c_port_t port) : i2c_port(port) {}
 
@@ -79,29 +76,29 @@ esp_err_t MPU6050_user::read_bytes(uint8_t reg_addr, uint8_t *data, size_t lengt
     return ret;
 }
 
-//esp_err_t MPU6050_user::read_accel_gyro(float &angle_x, float &angle_y) {
-//    //read_raw_data(0x3B, ax);
-//    //read_raw_data(0x3D, ay);
-//    //read_raw_data(0x3F, az);
+esp_err_t MPU6050_user::read_accel_gyro(float &angle_x, float &angle_y) {
+    //read_raw_data(0x3B, ax);
+    //read_raw_data(0x3D, ay);
+    //read_raw_data(0x3F, az);
 
-//	if (read_bytes(MPU6050_ACCEL_XOUT_H_REG, data, 12) == ESP_OK) {
-//		ax = (data[0] << 8) | data[1];
-//		ay = (data[2] << 8) | data[3];
-//		az = (data[4] << 8) | data[5];
+	if (read_bytes(MPU6050_ACCEL_XOUT_H_REG, data, 14) == ESP_OK) {
+		ax = (data[0] << 8) | data[1];
+		ay = (data[2] << 8) | data[3];
+		az = (data[4] << 8) | data[5];
 
-//		gx = (data[8] << 8) | data[9];
-//		gy = (data[10] << 8) | data[11];
-//		gz = (data[12] << 8) | data[13];
+		gx = (data[8] << 8) | data[9];
+		gy = (data[10] << 8) | data[11];
+		gz = (data[12] << 8) | data[13];
 		
-//		ESP_LOGI(TAG, "Accel: X=%d Y=%d Z=%d ",ax, ay, az);
-//	} else {
-//		ESP_LOGE(TAG, "Failed to read sensor data");
-//	}
+		ESP_LOGI(TAG, "Accel: X=%d Y=%d Z=%d ",ax, ay, az);
+	} else {
+		ESP_LOGE(TAG, "Failed to read sensor data");
+	}
 
-//    angle_x = atan2(ay, sqrt(ax * ax + az * az)) * 180.0 / M_PI;
-//    angle_y = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / M_PI;
-//    return ESP_OK;
-//}
+    angle_x = atan2(ay, sqrt(ax * ax + az * az)) * 180.0 / M_PI;
+    angle_y = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / M_PI;
+    return ESP_OK;
+}
 
 int16_t MPU6050_user::getAx() {
 	return ax;	
@@ -151,7 +148,39 @@ esp_err_t MPU6050_user::init_mpu() {
 	return ESP_OK;
 }
 
-esp_err_t MPU6050_user::read_accel_gyro() {
-	mpu_host.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-	return ESP_OK;
+void MPU6050_user::debug_sensor(){
+	printf("ax: %d\t ay: %d\t az: %d\t", ax, ay, az);
+	printf("gx: %d\t gy: %d\t gz: %d\n", gx, gy, gz);
+	//ESP_LOGI(TAG, "q0: %f q1: %f q2: %f q3: %f", q0, q1, q2, q3);
 }
+
+
+void MPU6050_user::taskUpdate(void *param) {
+	MPU6050_user* self = static_cast<MPU6050_user*>(param);
+
+	TickType_t xLastWakeTime = xTaskGetTickCount();
+	const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms周期
+
+	while (1) {
+		if (self->read_bytes(MPU6050_ACCEL_XOUT_H_REG, self->data, 14) == ESP_OK) {
+			self->ax = (self->data[0] << 8) | self->data[1];
+			self->ay = (self->data[2] << 8) | self->data[3];
+			self->az = (self->data[4] << 8) | self->data[5];
+
+			self->gx = (self->data[8] << 8) | self->data[9];
+			self->gy = (self->data[10] << 8) | self->data[11];
+			self->gz = (self->data[12] << 8) | self->data[13];
+			
+			//ESP_LOGI(TAG, "Accel: X=%d Y=%d Z=%d ",ax, ay, az);
+			//printf("Accel: X=%d\t Y=%d\t Z=%d\n ",self->ax, self->ay, self->az);
+			//printf("Gyro: X=%d\t Y=%d\t Z=%d\n ",self->gx, self->gy, self->gz);
+		}
+		else {
+		}
+		vTaskDelayUntil(&xLastWakeTime, xFrequency);
+	}
+}
+
+extern "C" void MPU6050_user::start() {
+		xTaskCreate(MPU6050_user::taskUpdate, "mpu_taskUpdate", 4096, this, 5, NULL);
+    }

@@ -2,17 +2,26 @@
 #include "madgwick_filter.h"
 #include "mpu6050.h"
 
+
 void madgwick_filter::init() {
 	madgwick.begin(100);
 }
 
 void madgwick_filter::update() {
-
-	madgwick.updateIMU((float)gx, (float)gy, (float)gz,(float)ax, (float)ay, (float)az);
+	float ax = mpu_user->getAx();
+	float ay = mpu_user->getAy();
+	float az = mpu_user->getAz();
+	float gx = mpu_user->getGx();
+	float gy = mpu_user->getGy();
+	float gz = mpu_user->getGz();
+	
+	madgwick.updateIMU(gx/131.0, gy/131.0, gz/131.0, ax/16384.0, ay/16384.0, az/16384.0);
 
 	mad_roll		= madgwick.getRoll();
 	mad_pitch		= madgwick.getPitch();
 	mad_yaw			= madgwick.getYaw();
+
+	debug_madrpy();
 	//q0				= madgwick.getQ0();
 	//q1				= madgwick.getQ1();
 	//q2				= madgwick.getQ2();
