@@ -35,8 +35,8 @@ uint32_t Battery_ADC::calcDivideVolt(uint32_t adc_data){
 
 uint32_t Battery_ADC::calcBattVolt(uint32_t divide_data){
     
-    //TODO:分圧抵抗の比率府を入力する
-    battvolt = 1.000 * divide_data;
+    //TODO:分圧抵抗の比率府を入力する 47k ×2の分圧でやる
+    battvolt = 2 * divide_data;
     
     return battvolt;
 
