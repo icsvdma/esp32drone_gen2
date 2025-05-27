@@ -13,7 +13,7 @@ void setup(void){
 
 
 void loop(){
-	const TickType_t delay = pdMS_TO_TICKS(10);  // 100Hz
+	const TickType_t delay = pdMS_TO_TICKS(1);  // 100Hz
 
 	drone.update(0.01);  // 10ms
 	vTaskDelay(delay);

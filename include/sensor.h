@@ -38,7 +38,7 @@ class MPU6050_user {
 		int16_t gx, gy, gz;
 	
 	public:
-		char *TAG = "MPU6050";
+		const char *TAG = "MPU6050";
 		MPU6050 mpu_host;
 
 		MPU6050_user(i2c_port_t port);

@@ -12,23 +12,27 @@ class Battery_ADC {
         uint32_t vref         = 0;
         uint32_t rawvolt      = 0;
         uint32_t divide_data  = 0;
-        uint32_t battvolt     = 0;
+        double battvolt       = 0;
 
         //使用するADCチャンネルに合わせる esp32S2の場合は使用するパラメータが変化するので注意
-        static const adc1_channel_t channel1    = ADC1_CHANNEL_6;
+        static const adc1_channel_t channel1    = ADC1_CHANNEL_0; //GPIO36
         static const adc_bits_width_t width     = ADC_WIDTH_BIT_12; //0~4095
         static const adc_atten_t atten          = ADC_ATTEN_11db;
         static const adc_unit_t unit            = ADC_UNIT_1;
 
-        static esp_adc_cal_characteristics_t *adc_chars;
-
-
+		
+		
 	public:
+        esp_adc_cal_characteristics_t *adc_chars;
+
 		void init();
         void update();
-        uint32_t getRawData();
+        uint32_t taskGetRawData();
         uint32_t calcDivideVolt(uint32_t adc_data);
-        uint32_t calcBattVolt(uint32_t divide_data);
+        double calcBattVolt(uint32_t divide_data);
+
+		static void taskUpdate(void *param);
+		void start();
 
         //getter
         uint32_t getRawVolt();

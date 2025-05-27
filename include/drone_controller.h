@@ -8,6 +8,7 @@
 #include "led_ctrl.h"
 #include "define_system.h"
 #include "madgwick_filter.h"
+#include "batt_adc.h"
 
 class DroneController {
 	private:
@@ -17,6 +18,7 @@ class DroneController {
 		PS3Controller ps3ctrl;
 		LEDController ledctrl;
 		madgwick_filter madgwick_user;
+		Battery_ADC batt_adc;
 
 		float angle_x = 0;
 		float angle_y = 0;

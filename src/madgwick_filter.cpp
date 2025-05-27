@@ -21,7 +21,7 @@ void madgwick_filter::update() {
 	mad_pitch		= madgwick.getPitch();
 	mad_yaw			= madgwick.getYaw();
 
-	debug_madrpy();
+	//debug_madrpy();
 	//q0				= madgwick.getQ0();
 	//q1				= madgwick.getQ1();
 	//q2				= madgwick.getQ2();

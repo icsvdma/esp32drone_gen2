@@ -31,6 +31,10 @@ void DroneController::init() {
 	//初期化処理完了をLEDでお知らせ
 	ledctrl.setRGBcolor(0,10,20);
 
+	//battery ADCの初期化
+	batt_adc.init();
+	batt_adc.start();
+
 	//センサ値取得タスクの起動
 	mpu_user.start();
 }
