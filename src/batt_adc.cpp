@@ -30,8 +30,8 @@ uint32_t Battery_ADC::taskGetRawData(){
 
 uint32_t Battery_ADC::calcDivideVolt(uint32_t adc_data){
     uint32_t divide_data;
-    // divide_data = esp_adc_cal_raw_to_voltage(adc_data, adc_chars);
-    divide_data = adc_data * vref / 4095;
+    divide_data = esp_adc_cal_raw_to_voltage(adc_data, adc_chars);
+    //divide_data = adc_data * vref / 4095;
 
 	return divide_data;
 }
@@ -58,7 +58,7 @@ void Battery_ADC::taskUpdate(void *param) {
 		
 #ifndef DEBUG
 		//debug用
-		printf("Raw Volt: %d\t Divide Volt: %d\t Batt Volt: %d\n", self->rawvolt, self->divide_data, self->battvolt);
+		printf("Raw Volt: %d\t Divide Volt: %d\t Batt Volt: %f\n", self->rawvolt, self->divide_data, self->battvolt);
 #endif 
 		vTaskDelay(pdMS_TO_TICKS(3000)); // 1秒ごとに更新
 	}

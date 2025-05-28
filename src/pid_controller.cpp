@@ -13,8 +13,8 @@ float PIDController::compute(int16_t setpoint, float measured, float dt) {
 }
 
 void PIDController::set_kp(int dir){
-	if(dir != 0)		user_kp = user_kp + 0.1;
-	else				user_kp = user_kp - 0.1;
+	if(dir != 0)		user_kp = user_kp + 1.0;
+	else				user_kp = user_kp - 1.0;
 	printf("kp is : %f\n",user_kp);
 	
 }

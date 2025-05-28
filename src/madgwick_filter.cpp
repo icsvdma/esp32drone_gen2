@@ -7,15 +7,22 @@ void madgwick_filter::init() {
 	madgwick.begin(100);
 }
 
-void madgwick_filter::update() {
-	float ax = mpu_user->getAx();
-	float ay = mpu_user->getAy();
-	float az = mpu_user->getAz();
-	float gx = mpu_user->getGx();
-	float gy = mpu_user->getGy();
-	float gz = mpu_user->getGz();
+void madgwick_filter::update_mad(float ax,float ay,float az,float gx,float gy,float gz) {
+	//ax				= ;
+	//ay				= ;
+	//az				= ;
+	//gx				= ;
+	//gy				= ;
+	//gz				= ;
+
+	ax				= ax / 16384.0;
+	ay				= ay / 16384.0;
+	az				= az / 16384.0;
+	gx				= gx / 131.0;
+	gy				= gy / 131.0;
+	gz				= gz / 131.0;
 	
-	madgwick.updateIMU(gx/131.0, gy/131.0, gz/131.0, ax/16384.0, ay/16384.0, az/16384.0);
+	madgwick.updateIMU(gx, gy, gz, ax, ay, az);
 
 	mad_roll		= madgwick.getRoll();
 	mad_pitch		= madgwick.getPitch();
@@ -51,7 +58,7 @@ void madgwick_filter::update() {
 	}
 
 	void madgwick_filter::debug_madrpy(){
-		printf("mad roll : %f\t,",mad_roll);
-		printf("mad pitch : %f\t,",mad_pitch);
-		printf("madg yaw : %f\n",mad_yaw);
+		printf("mad roll : %.2f\t,",mad_roll);
+		printf("mad pitch : %.2f\t,",mad_pitch);
+		printf("madg yaw : %.2f\n",mad_yaw);
 	}

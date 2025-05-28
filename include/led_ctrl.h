@@ -9,6 +9,8 @@ class LEDController {
 		void allClear();
 		void setRGBcolor(uint8_t r_param,uint8_t g_param,uint8_t b_param);
 		void updatePidMode(uint8_t mode);
+		void taskSetBattLowIndicator();
+		void taskFlyMode();
 };
 
 #endif

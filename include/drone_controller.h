@@ -13,11 +13,11 @@
 class DroneController {
 	private:
 		Motor m1, m2, m3, m4;
+		madgwick_filter madgwick_user;
 		MPU6050_user mpu_user;
 		PIDController pid_roll, pid_pitch;
 		PS3Controller ps3ctrl;
 		LEDController ledctrl;
-		madgwick_filter madgwick_user;
 		Battery_ADC batt_adc;
 
 		float angle_x = 0;
@@ -35,12 +35,13 @@ class DroneController {
 				m2(MOT_FL_OUT, LEDC_CHANNEL_1),
 				m3(MOT_RR_OUT, LEDC_CHANNEL_2),
 				m4(MOT_RL_OUT, LEDC_CHANNEL_3),
-				mpu_user(I2C_NUM_0),
+				
+				madgwick_user(0, 0, 0),
+				mpu_user(&madgwick_user,I2C_NUM_0),
 				pid_roll(),
 				pid_pitch(),
-				ledctrl(),
-				ps3ctrl(&pid_roll , &pid_pitch),
-				madgwick_user(&mpu_user)
+				ledctrl(),								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
+				ps3ctrl(&pid_roll , &pid_pitch)
 		{}
 
 		void init();

@@ -33,6 +33,8 @@ void DroneController::init() {
 
 	//battery ADCの初期化
 	batt_adc.init();
+
+	//バッテリ電圧監視タスクの起動
 	batt_adc.start();
 
 	//センサ値取得タスクの起動
@@ -43,7 +45,7 @@ void DroneController::init() {
 void DroneController::update(float dt) {
 	
 	//フィルタの処理を行う
-	madgwick_user.update();
+	// madgwick_user.update();
 	
 	//TODO:割り込み処理で優先度マックスで動作させる
 	//コントローラの制御状態を更新する
@@ -70,7 +72,7 @@ void DroneController::update(float dt) {
 	//debug_angle();
 	//ps3ctrl.debug_raw_param();
 	//ps3ctrl.debug_target_param();
-	//debug_motor_param();
+	debug_motor_param();
 #else
 	m1.set_speed(m1.clip_param(base_thrust - roll_output - pitch_output));  // front-right		MOT_FR_OUT
 	m2.set_speed(m2.clip_param(base_thrust + roll_output - pitch_output));  // front-left		MOT_FL_OUT
@@ -95,6 +97,7 @@ void DroneController::debug_base_rp(){
 	printf("%d\t,",base_thrust);
 	printf("%d\t,",base_roll);
 	printf("%d\t,",base_pitch);
+	printf("\n");
 }
 
 void DroneController::debug_angle(){
@@ -104,13 +107,14 @@ void DroneController::debug_angle(){
 }
 
 void DroneController::debug_motor_param(){
-	int16_t m1_param = (base_thrust + roll_output + pitch_output);
-	int16_t m2_param = (base_thrust - roll_output + pitch_output);
-	int16_t m3_param = (base_thrust + roll_output - pitch_output);
-	int16_t m4_param = (base_thrust - roll_output - pitch_output);
+	int16_t m1_param = (m1.clip_param(base_thrust + roll_output + pitch_output));
+	int16_t m2_param = (m2.clip_param(base_thrust - roll_output + pitch_output));
+	int16_t m3_param = (m3.clip_param(base_thrust + roll_output - pitch_output));
+	int16_t m4_param = (m4.clip_param(base_thrust - roll_output - pitch_output));
 	
-	printf("%d,",m1_param);
-	printf("%d,",m2_param);
-	printf("%d,",m3_param);
-	printf("%d\n",m4_param);
+	printf("%d\t,",m1_param);
+	printf("%d\t,",m2_param);
+	printf("%d\t,",m3_param);
+	printf("%d\t",m4_param);
+	printf("\n");
 } 

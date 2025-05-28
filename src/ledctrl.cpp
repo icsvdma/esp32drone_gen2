@@ -16,7 +16,8 @@
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_LEDS, RGBLED_OUT, NEO_GRB + NEO_KHZ800);
 
 void LEDController::init(){
-		pixels.begin();
+	gpio_set_direction((gpio_num_t)WLED_OUT,GPIO_MODE_OUTPUT);
+	pixels.begin();
 }
 
 void LEDController::allClear(){
@@ -28,7 +29,6 @@ void LEDController::setRGBcolor(uint8_t r_param,uint8_t g_param,uint8_t b_param)
 	pixels.setPixelColor(0, pixels.Color(r_param, g_param, b_param));
 	pixels.setPixelColor(1, pixels.Color(r_param, g_param, b_param));
 	pixels.show();
-
 }
 
 void LEDController::updatePidMode(uint8_t mode){
@@ -46,4 +46,32 @@ void LEDController::updatePidMode(uint8_t mode){
 	}
 	pixels.show();
 
+}
+
+void LEDController::taskSetBattLowIndicator(){
+	while(1){
+		for(int blkloop = 0;blkloop < 3 ; blkloop++){
+			pixels.setPixelColor(0,pixels.Color(120, 0, 0));
+			pixels.show();
+			vTaskDelay(pdMS_TO_TICKS(250));
+			
+			pixels.setPixelColor(0,pixels.Color(0, 0, 0));
+			pixels.show();
+			vTaskDelay(pdMS_TO_TICKS(250));
+		}
+		vTaskDelay(pdMS_TO_TICKS(3000));
+	}
+}
+
+void LEDController::taskFlyMode(){
+	while(1){
+		for(int blkloop = 0;blkloop < 3 ; blkloop++){
+			gpio_set_level((gpio_num_t)WLED_OUT,1);
+			vTaskDelay(pdMS_TO_TICKS(50));
+			
+			gpio_set_level((gpio_num_t)WLED_OUT,0);
+			vTaskDelay(pdMS_TO_TICKS(50));
+		}
+		vTaskDelay(pdMS_TO_TICKS(1000));
+	}
 }
