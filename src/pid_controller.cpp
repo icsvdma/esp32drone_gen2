@@ -23,7 +23,6 @@ float PIDController::compute(int16_t setpoint, float measured, float dt) {
     float derivative = (error - prev_error) / dt;
     prev_error = error;
     
-    //return kp * error + ki * integral + kd * derivative;
     return user_kp * error + user_ki * integral + user_kd * derivative;
 }
 

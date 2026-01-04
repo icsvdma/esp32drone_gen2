@@ -3,9 +3,6 @@
 
 class PIDController {
 private:
-    float kp;
-    float ki;
-    float kd;
     float user_kp = 2.0;    // Default P gain for angle control
     float user_ki = 0.05;   // Default I gain for angle control
     float user_kd = 0.5;    // Default D gain for angle control
