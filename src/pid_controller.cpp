@@ -4,10 +4,25 @@
 PIDController::PIDController() {}
 
 float PIDController::compute(int16_t setpoint, float measured, float dt) {
+    // Prevent derivative spikes when dt is too small
+    if (dt < MIN_DT) {
+        dt = MIN_DT;
+    }
+    
     float error = (float)setpoint - measured;
+    
+    // Update integral with anti-windup
     integral += error * dt;
+    if (integral > INTEGRAL_MAX) {
+        integral = INTEGRAL_MAX;
+    } else if (integral < INTEGRAL_MIN) {
+        integral = INTEGRAL_MIN;
+    }
+    
+    // Calculate derivative
     float derivative = (error - prev_error) / dt;
     prev_error = error;
+    
     //return kp * error + ki * integral + kd * derivative;
     return user_kp * error + user_ki * integral + user_kd * derivative;
 }
