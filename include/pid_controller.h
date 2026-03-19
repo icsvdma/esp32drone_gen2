@@ -6,6 +6,17 @@
  * 
  * このクラスは、積分ワインドアップ防止機能を備えたPID制御を実装します。
  * This class implements PID control with integral anti-windup protection.
+ * 
+ * Design Note (設計メモ):
+ * PIDゲインはデフォルト値で初期化されますが、PS3コントローラーの
+ * ボタン操作により飛行中にリアルタイムで調整可能です。
+ * 
+ * PID gains are initialized with default values, but can be adjusted
+ * in real-time during flight using PS3 controller buttons.
+ * 
+ * - Left/Right: パラメータ選択 (P, I, D) / Select parameter (P, I, D)
+ * - Up: 値を増加 / Increase value
+ * - Down: 値を減少 / Decrease value
  */
 class PIDController {
 private:
