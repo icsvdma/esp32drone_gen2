@@ -63,6 +63,11 @@ void LEDController::taskSetBattLowIndicator(){
 	}
 }
 
+//アーム中は白色LEDを点灯する
+void LEDController::setArmIndicator(bool armed){
+	gpio_set_level((gpio_num_t)WLED_OUT, armed ? 1 : 0);
+}
+
 void LEDController::taskFlyMode(){
 	while(1){
 		for(int blkloop = 0;blkloop < 3 ; blkloop++){

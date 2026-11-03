@@ -43,6 +43,35 @@ class DroneController {
 
 		int last_pid_mode		= -1;
 
+		// アーム状態（制御タスクだけが書き換える）
+		enum ArmEvent : uint8_t {
+			EV_NONE = 0,
+			EV_ARMED,
+			EV_DISARM_BUTTON,
+			EV_DISARM_LINK,
+			EV_DISARM_TILT,
+			EV_DISARM_IMU,
+			EV_DISARM_AUTO,
+			EV_REJECT_LINK,
+			EV_REJECT_THROTTLE,
+			EV_REJECT_TILT,
+			EV_REJECT_CALIB,
+		};
+		volatile bool armed				= false;
+		bool arm_toggle_req				= false;
+		bool calib_ok					= false;
+		uint32_t imu_fail_streak		= 0;
+		uint32_t zero_thr_since_ms		= 0;
+		volatile uint8_t arm_event		= EV_NONE;	//制御タスク → service() への通知（表示用）
+		bool last_armed_led				= false;
+
+		void updateArmState(uint32_t now_ms);
+		void tryArm(uint32_t now_ms);
+		void disarm(ArmEvent reason);
+		void stopMotors();
+		void resetControllers();
+		static const char* armEventStr(uint8_t ev);
+
 		volatile bool gains_changed		= false;	//制御タスク → service() への通知
 		volatile bool save_requested	= false;
 

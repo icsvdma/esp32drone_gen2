@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include "Arduino.h"
 #include <math.h>
 #include <Preferences.h>
 #include "drone_controller.h"
@@ -39,7 +40,8 @@ void DroneController::init() {
 	//キャリブレーション中は黄色、失敗したら赤で知らせる
 	ledctrl.setRGBcolor(20,20,0);
 	vTaskDelay(pdMS_TO_TICKS(100));	//wakeup後の安定待ち
-	if (mpu_user.calibrate() == ESP_OK) {
+	calib_ok = (mpu_user.calibrate() == ESP_OK);
+	if (calib_ok) {
 		//初期化処理完了をLEDでお知らせ
 		ledctrl.setRGBcolor(0,10,20);
 	} else {
@@ -91,14 +93,26 @@ void DroneController::service() {
 	}
 
 	//ゲインの保存要求。NVS書き込み中はフラッシュアクセスで両コアが止まることがあるため
-	//スロットル0のときだけ実行する
+	//ディスアーム中だけ実行する
 	if (save_requested) {
 		save_requested = false;
-		if (ps3ctrl.getThrust() == 0) {
+		if (!armed) {
 			saveGains();
 		} else {
-			printf("[gain] save rejected: set throttle to 0\n");
+			printf("[gain] save rejected: disarm first\n");
 		}
+	}
+
+	//アーム状態の表示
+	uint8_t ev = arm_event;
+	if (ev != EV_NONE) {
+		arm_event = EV_NONE;
+		printf("[arm] %s\n", armEventStr(ev));
+	}
+	bool is_armed = armed;
+	if (is_armed != last_armed_led) {
+		ledctrl.setArmIndicator(is_armed);
+		last_armed_led = is_armed;
 	}
 
 	//PIDパラメータの選択状態を取得してLEDに反映する（変化したときだけ更新）
@@ -131,6 +145,8 @@ void DroneController::handleCommands() {
 	while (ps3ctrl.popCommand(cmd)) {
 		if (cmd.type == PS3_CMD_SAVE_GAINS) {
 			save_requested = true;
+		} else if (cmd.type == PS3_CMD_ARM_TOGGLE) {
+			arm_toggle_req = true;
 		} else {
 			applyGainCommand(cmd);
 			gains_changed = true;
@@ -188,6 +204,101 @@ void DroneController::printGains() {
 		pid_roll_rate.get_kp(), pid_roll_rate.get_ki(), pid_roll_rate.get_kd());
 }
 
+//==========================================================
+//安全機能（アーム/ディスアーム・フェイルセーフ）
+//==========================================================
+
+//制御タスクから毎周期呼ぶ
+void DroneController::updateArmState(uint32_t now_ms) {
+	bool link_ok = ps3ctrl.isLinkAlive();
+
+	if (armed) {
+		float roll  = madgwick_user.getRoll();
+		float pitch = madgwick_user.getPitch();
+
+		if (!link_ok) {
+			disarm(EV_DISARM_LINK);							//フェイルセーフ: 通信断
+		} else if (imu_fail_streak >= IMU_FAIL_MAX) {
+			disarm(EV_DISARM_IMU);							//センサ異常
+		} else if (fabsf(roll) > TILT_CUTOFF_DEG || fabsf(pitch) > TILT_CUTOFF_DEG) {
+			disarm(EV_DISARM_TILT);							//転倒
+		} else if (base_thrust == 0) {
+			if ((uint32_t)(now_ms - zero_thr_since_ms) > AUTO_DISARM_MS) {
+				disarm(EV_DISARM_AUTO);						//スロットル0のまま放置
+			}
+		} else {
+			zero_thr_since_ms = now_ms;						//最後にスロットルが入っていた時刻
+		}
+	}
+
+	if (arm_toggle_req) {
+		arm_toggle_req = false;
+		if (armed) {
+			disarm(EV_DISARM_BUTTON);
+		} else {
+			tryArm(now_ms);
+		}
+	}
+}
+
+//アームできる条件をすべて満たしたときだけアームする
+void DroneController::tryArm(uint32_t now_ms) {
+	float roll  = madgwick_user.getRoll();
+	float pitch = madgwick_user.getPitch();
+
+	if (!calib_ok) {
+		arm_event = EV_REJECT_CALIB;
+	} else if (!ps3ctrl.isLinkAlive()) {
+		arm_event = EV_REJECT_LINK;
+	} else if (base_thrust != 0) {
+		arm_event = EV_REJECT_THROTTLE;						//急にモータが回らないようスロットル0のときだけ
+	} else if (fabsf(roll) > ARM_MAX_TILT_DEG || fabsf(pitch) > ARM_MAX_TILT_DEG) {
+		arm_event = EV_REJECT_TILT;
+	} else {
+		resetControllers();
+		zero_thr_since_ms = now_ms;		//スロットル0放置タイマーの起点
+		armed = true;
+		arm_event = EV_ARMED;
+	}
+}
+
+void DroneController::disarm(ArmEvent reason) {
+	armed = false;
+	resetControllers();
+	stopMotors();
+	arm_event = reason;
+}
+
+void DroneController::stopMotors() {
+	for (int i = 0; i < MOT_NUM; i++) {
+		motor_out[i] = 0;
+	}
+	roll_output = pitch_output = yaw_output = 0;
+	outputMotors();
+}
+
+void DroneController::resetControllers() {
+	pid_roll_rate.reset();
+	pid_pitch_rate.reset();
+	pid_yaw_rate.reset();
+}
+
+const char* DroneController::armEventStr(uint8_t ev) {
+	switch (ev) {
+		case EV_ARMED:				return "ARMED";
+		case EV_DISARM_BUTTON:		return "disarmed (button)";
+		case EV_DISARM_LINK:		return "disarmed (link lost)";
+		case EV_DISARM_TILT:		return "disarmed (tilt over limit)";
+		case EV_DISARM_IMU:			return "disarmed (IMU error)";
+		case EV_DISARM_AUTO:		return "disarmed (idle timeout)";
+		case EV_REJECT_LINK:		return "arm rejected: no controller link";
+		case EV_REJECT_THROTTLE:	return "arm rejected: throttle not zero";
+		case EV_REJECT_TILT:		return "arm rejected: not level";
+		case EV_REJECT_CALIB:		return "arm rejected: calibration failed";
+		default:					return "?";
+	}
+}
+
 static float rateLimit(float rate) {
 	if (rate >  MAX_RATE_DPS) return  MAX_RATE_DPS;
 	if (rate < -MAX_RATE_DPS) return -MAX_RATE_DPS;
@@ -198,20 +309,36 @@ static float rateLimit(float rate) {
 void DroneController::step(float dt) {
 	last_dt = dt;
 
-	//センサを読んで姿勢推定を更新する
+	uint32_t now_ms = millis();
+
+	//センサを読んで姿勢推定を更新する（ディスアーム中も姿勢推定は続ける）
 	if (mpu_user.read(imu) == ESP_OK) {
 		madgwick_user.update_mad(imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz);
+		imu_fail_streak = 0;
 	} else {
 		imu_err_count++;
+		imu_fail_streak++;
 	}
 
-	//コントローラの制御状態を更新する
-	ps3ctrl.update();
-	//ボタン操作（ゲイン変更など）を反映する
+	//コントローラの制御状態を更新する（通信断なら入力はすべて0になる）
+	ps3ctrl.update(now_ms);
+	//ボタン操作（ゲイン変更・アームなど）を反映する
 	handleCommands();
 
 	//コントローラから推力を取得して制御する
 	base_thrust	= ps3ctrl.getThrust();
+
+	//アーム/ディスアームの判定（フェイルセーフを含む）
+	updateArmState(now_ms);
+
+	//ディスアーム中、またはスロットルが低いときはモータを止めてPIDをリセットする
+	//（地上でI項が溜まって、離陸の瞬間に傾くのを防ぐ）
+	if (!armed || base_thrust < THROTTLE_MIN_CONTROL) {
+		resetControllers();
+		stopMotors();
+		return;
+	}
+
 	//コントローラから目標の角度を取得して制御する（符号は flight_config.h で決める）
 	base_roll	= ps3ctrl.getRoll();
 	base_pitch	= ps3ctrl.getPitch();

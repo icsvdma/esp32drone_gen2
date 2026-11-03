@@ -10,6 +10,7 @@ enum Ps3CmdType : uint8_t {
 	PS3_CMD_GAIN_UP,
 	PS3_CMD_GAIN_DOWN,
 	PS3_CMD_SAVE_GAINS,
+	PS3_CMD_ARM_TOGGLE,
 };
 struct Ps3Command {
 	Ps3CmdType	type;
@@ -19,6 +20,8 @@ struct Ps3Command {
 class PS3Controller {
 	private:
 		QueueHandle_t cmd_queue = NULL;
+		volatile uint32_t last_packet_ms = 0;	//最後にパケットを受信した時刻（Bluetoothタスクが更新）
+		bool link_alive = false;
 		void pushCommand(Ps3CmdType type);
 
 		uint16_t throttle_target= 0;
@@ -45,7 +48,8 @@ class PS3Controller {
 
 		void init();
 		void onConnect();
-		void update();
+		void update(uint32_t now_ms);
+		bool isLinkAlive();
 		void debug_raw_param();
 		void debug_target_param();
 		uint16_t getThrust();

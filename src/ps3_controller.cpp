@@ -26,8 +26,14 @@ void PS3Controller::onConnect() {
 	printf("PS3 Controller Connected!");
 }	
 
-void PS3Controller::update(){
-	if (Ps3.isConnected()) {
+//通信状態を判定して入力を更新する（制御タスクから呼ぶ）
+//Ps3.isConnected() は電波が途切れても false にならないことがあるため、
+//最後にパケットを受信してからの経過時間でも判定する（コールバックは受信パケットごとに呼ばれる）
+void PS3Controller::update(uint32_t now_ms){
+	uint32_t last = last_packet_ms;
+	link_alive = Ps3.isConnected() && (last != 0) && ((uint32_t)(now_ms - last) < LINK_TIMEOUT_MS);
+
+	if (link_alive) {
 
 		ly = Ps3.data.analog.stick.ly;
 		throttle_target = mapTarget_th((-1 * ly), 0, 128, 0, 1024); // 仮のスロットル範囲 1024は制御マックス値なのでマージンが必要
@@ -45,8 +51,16 @@ void PS3Controller::update(){
 		yaw_rate_target = YAW_STICK_DIR * stickNorm(lx) * MAX_YAW_RATE_DPS;
 	}
 	else{
-		//NOP
+		//通信断: 最後の入力を保持せず、すべて0にする
+		throttle_target	= 0;
+		pitch_target	= 0;
+		roll_target		= 0;
+		yaw_rate_target	= 0;
 	}
+}
+
+bool PS3Controller::isLinkAlive(){
+	return link_alive;
 }
 
 uint16_t PS3Controller::mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max){
@@ -104,6 +118,9 @@ void PS3Controller::debug_target_param(){
 }
 
 void PS3Controller::notify() {
+	//受信時刻を記録（通信断の検出に使う）
+	last_packet_ms = millis();
+
 	if(Ps3.event.button_down.right){
 		//pid_aly += 1;
 		pid_aly = (pid_aly + 1) % 3;
@@ -120,9 +137,13 @@ void PS3Controller::notify() {
 	if(Ps3.event.button_down.down){
 		pushCommand(PS3_CMD_GAIN_DOWN);
 	}
-	//SELECT: 現在のゲインをNVSに保存（スロットル0のときだけ実行される）
+	//SELECT: 現在のゲインをNVSに保存（ディスアーム中だけ実行される）
 	if(Ps3.event.button_down.select){
 		pushCommand(PS3_CMD_SAVE_GAINS);
+	}
+	//START: アーム/ディスアームの切り替え
+	if(Ps3.event.button_down.start){
+		pushCommand(PS3_CMD_ARM_TOGGLE);
 	}
 }
 

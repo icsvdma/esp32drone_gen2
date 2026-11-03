@@ -65,6 +65,16 @@
 #define YAW_I_LIMIT				100.0f
 #define YAW_OUT_LIMIT			200.0f	// Roll/Pitch の制御余裕を食いすぎないよう小さめ
 
+// 安全機能（アーム/ディスアーム・フェイルセーフ）
+// アーム: START ボタン（スロットル0・通信正常・キャリブレーション成功・機体がほぼ水平のときだけ）
+// ディスアーム: START ボタン（いつでも）、または下記の条件で自動
+#define LINK_TIMEOUT_MS			500		// この時間パケットが届かなければ通信断としてディスアーム
+#define THROTTLE_MIN_CONTROL	30		// これ未満のスロットルではモータ停止＆PIDリセット（地上でI項を溜めない）
+#define ARM_MAX_TILT_DEG		25.0f	// アーム時に許容する傾き
+#define TILT_CUTOFF_DEG			70.0f	// 飛行中にこれ以上傾いたら（転倒）ディスアーム
+#define AUTO_DISARM_MS			10000	// スロットル0のままこの時間経過したらディスアーム
+#define IMU_FAIL_MAX			25		// センサ読み出しがこの回数連続で失敗したらディスアーム（250Hzで100ms）
+
 // モータ出力（LEDC 10bit）
 #define MOTOR_PWM_MIN			0
 #define MOTOR_PWM_MAX			1023

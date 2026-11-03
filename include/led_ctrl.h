@@ -11,6 +11,7 @@ class LEDController {
 		void updatePidMode(uint8_t mode);
 		void taskSetBattLowIndicator();
 		void taskFlyMode();
+		void setArmIndicator(bool armed);
 };
 
 #endif
