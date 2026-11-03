@@ -28,8 +28,17 @@ void DroneController::init() {
 	ledctrl.init();
 	//シリアルLED全消灯
 	ledctrl.allClear();
-	//初期化処理完了をLEDでお知らせ
-	ledctrl.setRGBcolor(0,10,20);
+
+	//ジャイロ/加速度のオフセットを測定する（この間は機体を水平に置いて動かさないこと）
+	//キャリブレーション中は黄色、失敗したら赤で知らせる
+	ledctrl.setRGBcolor(20,20,0);
+	vTaskDelay(pdMS_TO_TICKS(100));	//wakeup後の安定待ち
+	if (mpu_user.calibrate() == ESP_OK) {
+		//初期化処理完了をLEDでお知らせ
+		ledctrl.setRGBcolor(0,10,20);
+	} else {
+		ledctrl.setRGBcolor(30,0,0);
+	}
 
 	//battery ADCの初期化
 	batt_adc.init();

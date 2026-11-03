@@ -21,12 +21,15 @@
 #define MPU6050_PWR_MGMT_1_REG		0x6B
 #define MPU6050_ACCEL_XOUT_H_REG	0x3B
 
-#define OFS_Gyro_X					78
-#define OFS_Gyro_Y					66
-#define OFS_Gyro_Z					132
-#define OFS_Accel_X					-1473
-#define OFS_Accel_Y					1185
-#define OFS_Accel_Z					2226
+// 現在のフルスケール設定（デフォルト: ジャイロ ±250dps / 加速度 ±2g）での換算係数
+#define ACCEL_LSB_PER_G				16384
+#define GYRO_LSB_PER_DPS			131.0f
+
+// 起動時キャリブレーションの設定
+#define CALIB_SAMPLES				500		// 2ms間隔で約1秒
+#define CALIB_MAX_RETRY				5
+#define CALIB_GYRO_MAX_P2P			300		// 静止判定: ジャイロの最大-最小がこれ以上なら「動いている」とみなす（LSB, 約2.3dps）
+#define CALIB_ACCEL_LEVEL			1		// 1: 起動時の姿勢を水平基準として加速度オフセットも求める（機体を水平に置いて起動すること）
 
 class madgwick_filter;
 
@@ -40,6 +43,12 @@ class MPU6050_user {
 		uint8_t 		data[14] = {0x00};
 		int16_t 		ax = 0, ay = 0, az = 0;
 		int16_t 		gx = 0, gy = 0, gz = 0;
+
+		// 起動時キャリブレーションで求めたオフセット（生値のLSB単位）
+		int32_t			ax_ofs = 0, ay_ofs = 0, az_ofs = 0;
+		int32_t			gx_ofs = 0, gy_ofs = 0, gz_ofs = 0;
+
+		esp_err_t		read_raw();
 	
 	public:
 		MPU6050 mpu_host;
@@ -65,6 +74,7 @@ class MPU6050_user {
 		int16_t 		getGz();
 
 		esp_err_t 		init_mpu();
+		esp_err_t		calibrate();
 
 		void 			debug_sensor();
 		//esp_err_t read_accel_gyro();

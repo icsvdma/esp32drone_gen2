@@ -1,6 +1,6 @@
 
 #include "madgwick_filter.h"
-#include "mpu6050.h"
+#include "sensor.h"
 
 
 void madgwick_filter::init() {
@@ -15,12 +15,12 @@ void madgwick_filter::update_mad(float ax,float ay,float az,float gx,float gy,fl
 	//gy				= ;
 	//gz				= ;
 
-	ax				= ax / 16384.0;
-	ay				= ay / 16384.0;
-	az				= az / 16384.0;
-	gx				= gx / 131.0;
-	gy				= gy / 131.0;
-	gz				= gz / 131.0;
+	ax				= ax / ACCEL_LSB_PER_G;
+	ay				= ay / ACCEL_LSB_PER_G;
+	az				= az / ACCEL_LSB_PER_G;
+	gx				= gx / GYRO_LSB_PER_DPS;
+	gy				= gy / GYRO_LSB_PER_DPS;
+	gz				= gz / GYRO_LSB_PER_DPS;
 	
 	madgwick.updateIMU(gx, gy, gz, ax, ay, az);
 

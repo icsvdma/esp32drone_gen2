@@ -117,6 +117,77 @@ int16_t MPU6050_user::getGz() {
 	return gz;	
 }
 
+//14バイトを読み出して生値(ax〜gz)を更新する
+esp_err_t MPU6050_user::read_raw() {
+	esp_err_t ret = read_bytes(MPU6050_ACCEL_XOUT_H_REG, data, 14);
+	if (ret == ESP_OK) {
+		ax = (data[0] << 8) | data[1];
+		ay = (data[2] << 8) | data[3];
+		az = (data[4] << 8) | data[5];
+
+		gx = (data[8] << 8) | data[9];
+		gy = (data[10] << 8) | data[11];
+		gz = (data[12] << 8) | data[13];
+	}
+	return ret;
+}
+
+//起動時キャリブレーション
+//機体を静止（CALIB_ACCEL_LEVEL=1 の場合は水平にも）させた状態で呼ぶこと
+//ジャイロの最大-最小が大きい（動いている）場合はやり直す
+esp_err_t MPU6050_user::calibrate() {
+	for (int retry = 0; retry < CALIB_MAX_RETRY; retry++) {
+		int32_t sum[6] = {0};
+		int16_t g_min[3] = {INT16_MAX, INT16_MAX, INT16_MAX};
+		int16_t g_max[3] = {INT16_MIN, INT16_MIN, INT16_MIN};
+		int valid = 0;
+
+		for (int i = 0; i < CALIB_SAMPLES; i++) {
+			if (read_raw() == ESP_OK) {
+				const int16_t g[3] = {gx, gy, gz};
+				sum[0] += ax; sum[1] += ay; sum[2] += az;
+				sum[3] += gx; sum[4] += gy; sum[5] += gz;
+				for (int k = 0; k < 3; k++) {
+					if (g[k] < g_min[k]) g_min[k] = g[k];
+					if (g[k] > g_max[k]) g_max[k] = g[k];
+				}
+				valid++;
+			}
+			vTaskDelay(pdMS_TO_TICKS(2));
+		}
+
+		if (valid < CALIB_SAMPLES / 2) {
+			printf("[calib] sensor read failed (%d/%d)\n", valid, CALIB_SAMPLES);
+			continue;
+		}
+
+		bool moving = false;
+		for (int k = 0; k < 3; k++) {
+			if ((g_max[k] - g_min[k]) > CALIB_GYRO_MAX_P2P) moving = true;
+		}
+		if (moving) {
+			printf("[calib] motion detected, retry %d\n", retry + 1);
+			continue;
+		}
+
+		gx_ofs = sum[3] / valid;
+		gy_ofs = sum[4] / valid;
+		gz_ofs = sum[5] / valid;
+#if CALIB_ACCEL_LEVEL
+		ax_ofs = sum[0] / valid;
+		ay_ofs = sum[1] / valid;
+		az_ofs = sum[2] / valid - ACCEL_LSB_PER_G;	// Z軸は1gが正しい値
+#endif
+		printf("[calib] gyro ofs: %ld %ld %ld / accel ofs: %ld %ld %ld\n",
+			(long)gx_ofs, (long)gy_ofs, (long)gz_ofs,
+			(long)ax_ofs, (long)ay_ofs, (long)az_ofs);
+		return ESP_OK;
+	}
+
+	printf("[calib] FAILED: offsets are not applied\n");
+	return ESP_FAIL;
+}
+
 void MPU6050_user::taskUpdate(void *param) {
 	MPU6050_user* self = static_cast<MPU6050_user*>(param);
 
@@ -124,21 +195,15 @@ void MPU6050_user::taskUpdate(void *param) {
 	const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms周期
 
 	while (1) {
-		if (self->read_bytes(MPU6050_ACCEL_XOUT_H_REG, self->data, 14) == ESP_OK) {
-			self->ax = (self->data[0] << 8) | self->data[1];
-			self->ay = (self->data[2] << 8) | self->data[3];
-			self->az = (self->data[4] << 8) | self->data[5];
-
-			self->gx = (self->data[8] << 8) | self->data[9];
-			self->gy = (self->data[10] << 8) | self->data[11];
-			self->gz = (self->data[12] << 8) | self->data[13];
-			
-			//ESP_LOGI(TAG, "Accel: X=%d Y=%d Z=%d ",ax, ay, az);
-			//printf("Accel: X=%d\t Y=%d\t Z=%d\n ",self->ax, self->ay, self->az);
-			//printf("Gyro: X=%d\t Y=%d\t Z=%d\n ",self->gx, self->gy, self->gz);
-			self->mad_user->update_mad(self->ax,self->ay,self->az,self->gx,self->gy,self->gz);
-		}
-		else {
+		if (self->read_raw() == ESP_OK) {
+			//キャリブレーションで求めたオフセットを差し引いてからフィルタへ渡す
+			self->mad_user->update_mad(
+				(float)(self->ax - self->ax_ofs),
+				(float)(self->ay - self->ay_ofs),
+				(float)(self->az - self->az_ofs),
+				(float)(self->gx - self->gx_ofs),
+				(float)(self->gy - self->gy_ofs),
+				(float)(self->gz - self->gz_ofs));
 		}
 		vTaskDelayUntil(&xLastWakeTime, xFrequency);
 	}
