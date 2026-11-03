@@ -9,8 +9,8 @@ class PS3Controller {
 		PIDController* pid_pitch;
 
 		uint16_t throttle_target= 0;
-		int16_t pitch_target	= 0;
-		int16_t roll_target		= 0;
+		float pitch_target		= 0;
+		float roll_target		= 0;
 	
 		int8_t ly 				= 0;
 		int8_t ry 				= 0;
@@ -35,11 +35,11 @@ class PS3Controller {
 		void debug_raw_param();
 		void debug_target_param();
 		uint16_t getThrust();
-		int16_t getRoll();
-		int16_t getPitch();
+		float getRoll();
+		float getPitch();
 		int getPidAly();
 		uint16_t mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max);
-		int16_t mapTarget(int x , int in_min , int in_max , int out_min , int out_max);
+		static float stickNorm(int8_t raw);
 		void notify();
 
 		static void staticNotify();

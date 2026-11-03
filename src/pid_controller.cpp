@@ -3,8 +3,8 @@
 
 PIDController::PIDController() {}
 
-float PIDController::compute(int16_t setpoint, float measured, float dt) {
-    float error = (float)setpoint - measured;
+float PIDController::compute(float setpoint, float measured, float dt) {
+    float error = setpoint - measured;
     integral += error * dt;
     float derivative = (error - prev_error) / dt;
     prev_error = error;

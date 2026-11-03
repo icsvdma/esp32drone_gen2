@@ -16,7 +16,7 @@ private:
 public:
     //PIDController(float p, float i, float d);
     PIDController();
-    float compute(int16_t setpoint, float measured, float dt);
+    float compute(float setpoint, float measured, float dt);
 
 	void set_kp(int dir);
 	void set_ki(int dir);

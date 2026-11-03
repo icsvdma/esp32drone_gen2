@@ -3,6 +3,7 @@
 # include "Ps3Controller.h"
 # include "ps3_ctrl.h"
 # include "pid_controller.h"
+# include "flight_config.h"
 
 //PS3Controller usr_ps3ctrl;
 
@@ -33,11 +34,11 @@ void PS3Controller::update(){
 
 		// 右スティック上下 → ピッチ
 		ry = Ps3.data.analog.stick.ry;
-		pitch_target = mapTarget((-1 * ry), -127, 128, -30, 30); // -30度～+30度
+		pitch_target = -stickNorm(ry) * MAX_ANGLE_DEG; // -30度～+30度
 
 		// 右スティック左右 → ロール
 		rx = Ps3.data.analog.stick.rx;
-		roll_target = mapTarget((-1 * rx), -127, 128, -30, 30); // -30度～+30度
+		roll_target = -stickNorm(rx) * MAX_ANGLE_DEG; // -30度～+30度
 	}
 	else{
 		//NOP
@@ -56,17 +57,27 @@ uint16_t PS3Controller::mapTarget_th(int x , int in_min , int in_max , int out_m
 	}
 }
 
-int16_t PS3Controller::mapTarget(int x , int in_min , int in_max , int out_min , int out_max){
-		return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+//スティックの生値(-128〜127)を -1.0〜+1.0 に正規化する
+//中立付近(STICK_DEADBAND以内)は厳密に0にし、不感帯の外側から0→1へ連続的に変化させる
+//（以前の整数マッピングは中立で -1 になり、常に-1度の指令が出ていた）
+float PS3Controller::stickNorm(int8_t raw){
+	int v = raw;
+	int mag = (v < 0) ? -v : v;
+	if (mag <= STICK_DEADBAND) {
+		return 0.0f;
+	}
+	float s = (float)(mag - STICK_DEADBAND) / (127.0f - STICK_DEADBAND);
+	if (s > 1.0f) s = 1.0f;		//-128 のとき
+	return (v < 0) ? -s : s;
 }
 
 uint16_t PS3Controller::getThrust(){
 	return throttle_target;
 }
-int16_t PS3Controller::getRoll(){
+float PS3Controller::getRoll(){
 	return roll_target;
 }
-int16_t PS3Controller::getPitch(){
+float PS3Controller::getPitch(){
 	return 	pitch_target;
 }
 
@@ -78,8 +89,8 @@ void PS3Controller::debug_raw_param(){
 
 void PS3Controller::debug_target_param(){
 	printf("target_th : %d \t",throttle_target);
-	printf("target_roll : %d \t",roll_target);
-	printf("target_pitch : %d \n",pitch_target);
+	printf("target_roll : %.2f \t",roll_target);
+	printf("target_pitch : %.2f \n",pitch_target);
 }
 
 void PS3Controller::notify() {

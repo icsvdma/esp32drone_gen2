@@ -141,8 +141,8 @@ void DroneController::debug_rpy(){
 
 void DroneController::debug_base_rp(){
 	printf("%d\t,",base_thrust);
-	printf("%d\t,",base_roll);
-	printf("%d\t,",base_pitch);
+	printf("%.2f\t,",base_roll);
+	printf("%.2f\t,",base_pitch);
 	printf("\n");
 }
 

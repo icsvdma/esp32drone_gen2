@@ -29,8 +29,8 @@ class DroneController {
 		int16_t pitch_output		= 0;
 
 		uint16_t base_thrust	= 0;
-		int16_t base_roll		= 0;
-		int16_t base_pitch		= 0;
+		float base_roll			= 0;
+		float base_pitch		= 0;
 
 		int last_pid_mode		= -1;
 

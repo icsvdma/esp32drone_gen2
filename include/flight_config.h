@@ -18,4 +18,8 @@
 // LED更新・デバッグ出力など、制御以外の処理の周期
 #define SERVICE_PERIOD_MS		50
 
+// スティック入力
+#define STICK_DEADBAND			6		// 中立付近の不感帯（生値, 最大127）
+#define MAX_ANGLE_DEG			30.0f	// Roll/Pitch の最大目標角度[deg]
+
 #endif // FLIGHT_CONFIG_H
