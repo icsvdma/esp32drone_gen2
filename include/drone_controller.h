@@ -17,6 +17,7 @@ class DroneController {
 		madgwick_filter madgwick_user;
 		MPU6050_user mpu_user;
 		PIDController pid_roll_rate, pid_pitch_rate;	//内側ループ（角速度PID）
+		PIDController pid_yaw_rate;						//ヨーは角速度のみ制御
 		PS3Controller ps3ctrl;
 		LEDController ledctrl;
 		Battery_ADC batt_adc;
@@ -29,6 +30,8 @@ class DroneController {
 		float pitch_rate_sp			= 0;
 		float roll_output			= 0;
 		float pitch_output			= 0;
+		float yaw_rate_sp			= 0;
+		float yaw_output			= 0;
 
 		// モータ出力値（FR, FL, RR, RL）。実機出力とデバッグ表示で同じ値を使う
 		enum { MOT_FR = 0, MOT_FL, MOT_RR, MOT_RL, MOT_NUM };
@@ -42,7 +45,7 @@ class DroneController {
 
 		static void controlTask(void *param);
 		void step(float dt);
-		void mix(float thrust, float roll, float pitch);
+		void mix(float thrust, float roll, float pitch, float yaw);
 		void outputMotors();
 	public:
 		DroneController() :
@@ -55,6 +58,7 @@ class DroneController {
 				mpu_user(&madgwick_user,I2C_NUM_0),
 				pid_roll_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
 				pid_pitch_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
+				pid_yaw_rate(YAW_I_LIMIT, YAW_OUT_LIMIT, 0),
 				ps3ctrl(&pid_roll_rate , &pid_pitch_rate),
 				ledctrl()								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
 		{}

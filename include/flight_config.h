@@ -27,6 +27,8 @@
 // 従来の動作（右スティック右/手前で正の目標角）と同じになるよう +1 にしている
 #define ROLL_STICK_DIR			(+1.0f)
 #define PITCH_STICK_DIR			(+1.0f)
+// 左スティック右(lx>0)で上から見て時計回り = ジャイロZが負（Z軸上向きの場合）
+#define YAW_STICK_DIR			(-1.0f)
 
 // カスケード制御
 // 外側ループ: 角度誤差[deg] → 目標角速度[deg/s]（P制御）
@@ -38,11 +40,20 @@
 #define RATE_OUT_LIMIT			400.0f	// 出力の上限（PWMカウント）
 #define RATE_D_CUTOFF_HZ		30.0f	// D項LPFのカットオフ周波数
 
+// ヨー制御（6軸IMUではヨー角の絶対値は分からないので、角速度だけを制御する）
+// スティック中立で「回転速度 0」を保つ
+#define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度
+#define YAW_RATE_KP				1.0f	// 未チューニングの仮値
+#define YAW_RATE_KI				0.5f	// 未チューニングの仮値
+#define YAW_RATE_KD				0.0f
+#define YAW_I_LIMIT				100.0f
+#define YAW_OUT_LIMIT			200.0f	// Roll/Pitch の制御余裕を食いすぎないよう小さめ
+
 // モータ出力（LEDC 10bit）
 #define MOTOR_PWM_MIN			0
 #define MOTOR_PWM_MAX			1023
 
-// モータミキシング表 {roll, pitch} の係数
+// モータミキシング表 {roll, pitch, yaw} の係数
 // 並びは MOT_FR, MOT_FL, MOT_RR, MOT_RL（define_system.h のピン定義と同じ順）
 // 符号はセンサの取り付け向きで決まるので、実機で必ず確認すること（docs/stability_review.md 4章）
 #define MIX_FR_ROLL				(-1.0f)
@@ -53,5 +64,13 @@
 #define MIX_RR_PITCH			(+1.0f)
 #define MIX_RL_ROLL				(+1.0f)
 #define MIX_RL_PITCH			(+1.0f)
+// ヨーの係数は「プロペラの回転方向（上から見て）が FR:反時計 / FL:時計 / RR:時計 / RL:反時計、
+// MPU6050 のZ軸が上向き」を前提にしている（前提が違う場合は符号を反転すること）
+// ジャイロZを正（上から見て反時計回り）にしたいときは、時計回りのプロペラ（FL, RR）の
+// 回転を上げると反トルクで機体が反時計回りに回る
+#define MIX_FR_YAW				(-1.0f)
+#define MIX_FL_YAW				(+1.0f)
+#define MIX_RR_YAW				(+1.0f)
+#define MIX_RL_YAW				(-1.0f)
 
 #endif // FLIGHT_CONFIG_H

@@ -11,7 +11,9 @@ class PS3Controller {
 		uint16_t throttle_target= 0;
 		float pitch_target		= 0;
 		float roll_target		= 0;
+		float yaw_rate_target	= 0;
 	
+		int8_t lx 				= 0;
 		int8_t ly 				= 0;
 		int8_t ry 				= 0;
 		int8_t rx 				= 0;
@@ -37,6 +39,7 @@ class PS3Controller {
 		uint16_t getThrust();
 		float getRoll();
 		float getPitch();
+		float getYawRate();
 		int getPidAly();
 		uint16_t mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max);
 		static float stickNorm(int8_t raw);

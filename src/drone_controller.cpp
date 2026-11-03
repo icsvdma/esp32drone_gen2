@@ -19,6 +19,9 @@ void DroneController::init() {
 	//センサのフィルタを使用するために初期化を行う（制御周期と一致させる）
 	madgwick_user.init(CONTROL_HZ);
 
+	//ヨーのゲインは固定値（十字キーでの調整対象外）
+	pid_yaw_rate.setGains(YAW_RATE_KP, YAW_RATE_KI, YAW_RATE_KD);
+
 	//コントローラの初期化
 	ps3ctrl.init();
 	
@@ -131,22 +134,26 @@ void DroneController::step(float dt) {
 	roll_output		= pid_roll_rate.compute(roll_rate_sp, imu.gx, dt);
 	pitch_output	= pid_pitch_rate.compute(pitch_rate_sp, imu.gy, dt);
 
-	mix(base_thrust, roll_output, pitch_output);
+	//ヨー: スティックの目標角速度とジャイロZでPID（中立なら回転を止める）
+	yaw_rate_sp		= ps3ctrl.getYawRate();
+	yaw_output		= pid_yaw_rate.compute(yaw_rate_sp, imu.gz, dt);
+
+	mix(base_thrust, roll_output, pitch_output, yaw_output);
 	outputMotors();
 }
 
 //推力と各軸の制御量から各モータの出力を計算する
 //実機出力・デバッグ表示ともにこの結果（motor_out）を使う
-void DroneController::mix(float thrust, float roll, float pitch) {
-	static const float MIX[MOT_NUM][2] = {
-		{ MIX_FR_ROLL, MIX_FR_PITCH },	// front-right	MOT_FR_OUT
-		{ MIX_FL_ROLL, MIX_FL_PITCH },	// front-left	MOT_FL_OUT
-		{ MIX_RR_ROLL, MIX_RR_PITCH },	// back-right	MOT_RR_OUT
-		{ MIX_RL_ROLL, MIX_RL_PITCH },	// back-left	MOT_RL_OUT
+void DroneController::mix(float thrust, float roll, float pitch, float yaw) {
+	static const float MIX[MOT_NUM][3] = {
+		{ MIX_FR_ROLL, MIX_FR_PITCH, MIX_FR_YAW },	// front-right	MOT_FR_OUT
+		{ MIX_FL_ROLL, MIX_FL_PITCH, MIX_FL_YAW },	// front-left	MOT_FL_OUT
+		{ MIX_RR_ROLL, MIX_RR_PITCH, MIX_RR_YAW },	// back-right	MOT_RR_OUT
+		{ MIX_RL_ROLL, MIX_RL_PITCH, MIX_RL_YAW },	// back-left	MOT_RL_OUT
 	};
 
 	for (int i = 0; i < MOT_NUM; i++) {
-		float v = thrust + MIX[i][0] * roll + MIX[i][1] * pitch;
+		float v = thrust + MIX[i][0] * roll + MIX[i][1] * pitch + MIX[i][2] * yaw;
 		//float のまま範囲を制限してから整数にする（範囲外の float→int 変換は未定義動作）
 		if (v < MOTOR_PWM_MIN) v = MOTOR_PWM_MIN;
 		if (v > MOTOR_PWM_MAX) v = MOTOR_PWM_MAX;
@@ -191,7 +198,8 @@ void DroneController::debug_angle(){
 
 void DroneController::debug_rate(){
 	printf("roll sp:%.1f gx:%.1f\t,",roll_rate_sp,imu.gx);
-	printf("pitch sp:%.1f gy:%.1f",pitch_rate_sp,imu.gy);
+	printf("pitch sp:%.1f gy:%.1f\t,",pitch_rate_sp,imu.gy);
+	printf("yaw sp:%.1f gz:%.1f",yaw_rate_sp,imu.gz);
 	printf("\n");
 }
 

@@ -39,6 +39,10 @@ void PS3Controller::update(){
 		// 右スティック左右 → ロール
 		rx = Ps3.data.analog.stick.rx;
 		roll_target = ROLL_STICK_DIR * stickNorm(rx) * MAX_ANGLE_DEG; // -30度～+30度
+
+		// 左スティック左右 → ヨー角速度
+		lx = Ps3.data.analog.stick.lx;
+		yaw_rate_target = YAW_STICK_DIR * stickNorm(lx) * MAX_YAW_RATE_DPS;
 	}
 	else{
 		//NOP
@@ -81,7 +85,12 @@ float PS3Controller::getPitch(){
 	return 	pitch_target;
 }
 
+float PS3Controller::getYawRate(){
+	return yaw_rate_target;
+}
+
 void PS3Controller::debug_raw_param(){
+	printf("lx_raw : %d \t",lx);
 	printf("ly_raw : %d \t",ly);
 	printf("ry_raw : %d \t",ry);
 	printf("rx_raw : %d \n",rx);
@@ -90,7 +99,8 @@ void PS3Controller::debug_raw_param(){
 void PS3Controller::debug_target_param(){
 	printf("target_th : %d \t",throttle_target);
 	printf("target_roll : %.2f \t",roll_target);
-	printf("target_pitch : %.2f \n",pitch_target);
+	printf("target_pitch : %.2f \t",pitch_target);
+	printf("target_yaw_rate : %.1f \n",yaw_rate_target);
 }
 
 void PS3Controller::notify() {

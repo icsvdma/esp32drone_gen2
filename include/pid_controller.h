@@ -25,6 +25,7 @@ public:
     PIDController(float i_lim, float out_lim, float d_cutoff);
     float compute(float setpoint, float measured, float dt);
     void reset();
+    void setGains(float kp, float ki, float kd);
 
 	void set_kp(int dir);
 	void set_ki(int dir);

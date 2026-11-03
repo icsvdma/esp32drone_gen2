@@ -45,6 +45,12 @@ void PIDController::reset() {
     first = true;
 }
 
+void PIDController::setGains(float kp, float ki, float kd) {
+    user_kp = kp;
+    user_ki = ki;
+    user_kd = kd;
+}
+
 void PIDController::set_kp(int dir){
 	if(dir != 0)		user_kp = user_kp + 1.0;
 	else				user_kp = user_kp - 1.0;
