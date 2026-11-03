@@ -111,19 +111,43 @@ void DroneController::step(float dt) {
 
 	//コントローラから推力を取得して制御する
 	base_thrust	= ps3ctrl.getThrust();
-	//コントローラから目標の角度を取得して制御する
-	base_roll	= -1 * ps3ctrl.getRoll();
-	base_pitch	= -1 * ps3ctrl.getPitch();
+	//コントローラから目標の角度を取得して制御する（符号は flight_config.h で決める）
+	base_roll	= ps3ctrl.getRoll();
+	base_pitch	= ps3ctrl.getPitch();
 
 	//引数:目標値、現在角度、取得周期
-	roll_output = (int16_t)pid_roll.compute(base_roll, madgwick_user.getRoll(), dt);
-	pitch_output = (int16_t)pid_pitch.compute(base_pitch, madgwick_user.getPitch(), dt);
+	roll_output = pid_roll.compute(base_roll, madgwick_user.getRoll(), dt);
+	pitch_output = pid_pitch.compute(base_pitch, madgwick_user.getPitch(), dt);
 
+	mix(base_thrust, roll_output, pitch_output);
+	outputMotors();
+}
+
+//推力と各軸の制御量から各モータの出力を計算する
+//実機出力・デバッグ表示ともにこの結果（motor_out）を使う
+void DroneController::mix(float thrust, float roll, float pitch) {
+	static const float MIX[MOT_NUM][2] = {
+		{ MIX_FR_ROLL, MIX_FR_PITCH },	// front-right	MOT_FR_OUT
+		{ MIX_FL_ROLL, MIX_FL_PITCH },	// front-left	MOT_FL_OUT
+		{ MIX_RR_ROLL, MIX_RR_PITCH },	// back-right	MOT_RR_OUT
+		{ MIX_RL_ROLL, MIX_RL_PITCH },	// back-left	MOT_RL_OUT
+	};
+
+	for (int i = 0; i < MOT_NUM; i++) {
+		float v = thrust + MIX[i][0] * roll + MIX[i][1] * pitch;
+		//float のまま範囲を制限してから整数にする（範囲外の float→int 変換は未定義動作）
+		if (v < MOTOR_PWM_MIN) v = MOTOR_PWM_MIN;
+		if (v > MOTOR_PWM_MAX) v = MOTOR_PWM_MAX;
+		motor_out[i] = (uint16_t)(v + 0.5f);
+	}
+}
+
+void DroneController::outputMotors() {
 #ifndef DEBUG_MODE
-	m1.set_speed(m1.clip_param(base_thrust - roll_output - pitch_output));  // front-right		MOT_FR_OUT
-	m2.set_speed(m2.clip_param(base_thrust + roll_output - pitch_output));  // front-left		MOT_FL_OUT
-	m3.set_speed(m3.clip_param(base_thrust - roll_output + pitch_output));  // back-right		MOT_RR_OUT
-	m4.set_speed(m4.clip_param(base_thrust + roll_output + pitch_output));  // back-left		MOT_RL_OUT
+	m1.set_speed(motor_out[MOT_FR]);
+	m2.set_speed(motor_out[MOT_FL]);
+	m3.set_speed(motor_out[MOT_RR]);
+	m4.set_speed(motor_out[MOT_RL]);
 #endif
 }
 
@@ -134,8 +158,8 @@ void DroneController::step(float dt) {
 
 void DroneController::debug_rpy(){
 	printf("%d,",base_thrust);
-	printf("%d,",roll_output);
-	printf("%d,",pitch_output);
+	printf("%.1f,",roll_output);
+	printf("%.1f,",pitch_output);
 	printf("\n");
 }
 
@@ -154,14 +178,8 @@ void DroneController::debug_angle(){
 }
 
 void DroneController::debug_motor_param(){
-	int16_t m1_param = (m1.clip_param(base_thrust + roll_output + pitch_output));
-	int16_t m2_param = (m2.clip_param(base_thrust - roll_output + pitch_output));
-	int16_t m3_param = (m3.clip_param(base_thrust + roll_output - pitch_output));
-	int16_t m4_param = (m4.clip_param(base_thrust - roll_output - pitch_output));
-	
-	printf("%d\t,",m1_param);
-	printf("%d\t,",m2_param);
-	printf("%d\t,",m3_param);
-	printf("%d\t",m4_param);
+	//実機に出力する値（motor_out）をそのまま表示する
+	printf("FR:%u\t,FL:%u\t,RR:%u\t,RL:%u",
+		motor_out[MOT_FR], motor_out[MOT_FL], motor_out[MOT_RR], motor_out[MOT_RL]);
 	printf("\n");
-} 
+}

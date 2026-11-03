@@ -22,4 +22,26 @@
 #define STICK_DEADBAND			6		// 中立付近の不感帯（生値, 最大127）
 #define MAX_ANGLE_DEG			30.0f	// Roll/Pitch の最大目標角度[deg]
 
+// スティック → 目標角の符号（符号はここだけで決める）
+// 目標角の正の向きは Madgwick の Roll/Pitch の正の向きと同じ
+// 従来の動作（右スティック右/手前で正の目標角）と同じになるよう +1 にしている
+#define ROLL_STICK_DIR			(+1.0f)
+#define PITCH_STICK_DIR			(+1.0f)
+
+// モータ出力（LEDC 10bit）
+#define MOTOR_PWM_MIN			0
+#define MOTOR_PWM_MAX			1023
+
+// モータミキシング表 {roll, pitch} の係数
+// 並びは MOT_FR, MOT_FL, MOT_RR, MOT_RL（define_system.h のピン定義と同じ順）
+// 符号はセンサの取り付け向きで決まるので、実機で必ず確認すること（docs/stability_review.md 4章）
+#define MIX_FR_ROLL				(-1.0f)
+#define MIX_FR_PITCH			(-1.0f)
+#define MIX_FL_ROLL				(+1.0f)
+#define MIX_FL_PITCH			(-1.0f)
+#define MIX_RR_ROLL				(-1.0f)
+#define MIX_RR_PITCH			(+1.0f)
+#define MIX_RL_ROLL				(+1.0f)
+#define MIX_RL_PITCH			(+1.0f)
+
 #endif // FLIGHT_CONFIG_H

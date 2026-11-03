@@ -25,8 +25,12 @@ class DroneController {
 		uint32_t imu_err_count		= 0;
 		float last_dt				= CONTROL_DT_NOMINAL;
 	
-		int16_t roll_output			= 0;
-		int16_t pitch_output		= 0;
+		float roll_output			= 0;
+		float pitch_output			= 0;
+
+		// モータ出力値（FR, FL, RR, RL）。実機出力とデバッグ表示で同じ値を使う
+		enum { MOT_FR = 0, MOT_FL, MOT_RR, MOT_RL, MOT_NUM };
+		uint16_t motor_out[MOT_NUM]	= {0};
 
 		uint16_t base_thrust	= 0;
 		float base_roll			= 0;
@@ -36,6 +40,8 @@ class DroneController {
 
 		static void controlTask(void *param);
 		void step(float dt);
+		void mix(float thrust, float roll, float pitch);
+		void outputMotors();
 	public:
 		DroneController() :
 				m1(MOT_FR_OUT, LEDC_CHANNEL_0),

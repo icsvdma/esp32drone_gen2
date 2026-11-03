@@ -34,11 +34,11 @@ void PS3Controller::update(){
 
 		// 右スティック上下 → ピッチ
 		ry = Ps3.data.analog.stick.ry;
-		pitch_target = -stickNorm(ry) * MAX_ANGLE_DEG; // -30度～+30度
+		pitch_target = PITCH_STICK_DIR * stickNorm(ry) * MAX_ANGLE_DEG; // -30度～+30度
 
 		// 右スティック左右 → ロール
 		rx = Ps3.data.analog.stick.rx;
-		roll_target = -stickNorm(rx) * MAX_ANGLE_DEG; // -30度～+30度
+		roll_target = ROLL_STICK_DIR * stickNorm(rx) * MAX_ANGLE_DEG; // -30度～+30度
 	}
 	else{
 		//NOP
