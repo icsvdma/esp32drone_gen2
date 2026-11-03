@@ -89,10 +89,17 @@ void DroneController::service() {
 	//debug_rpy();
 	//debug_base_rp();
 	//debug_angle();
+	//debug_rate();
 	//ps3ctrl.debug_raw_param();
 	//ps3ctrl.debug_target_param();
 	debug_motor_param();
 #endif
+}
+
+static float rateLimit(float rate) {
+	if (rate >  MAX_RATE_DPS) return  MAX_RATE_DPS;
+	if (rate < -MAX_RATE_DPS) return -MAX_RATE_DPS;
+	return rate;
 }
 
 //1制御周期ぶんの処理（センサ読み → 姿勢推定 → PID → モータ出力）
@@ -115,9 +122,14 @@ void DroneController::step(float dt) {
 	base_roll	= ps3ctrl.getRoll();
 	base_pitch	= ps3ctrl.getPitch();
 
-	//引数:目標値、現在角度、取得周期
-	roll_output = pid_roll.compute(base_roll, madgwick_user.getRoll(), dt);
-	pitch_output = pid_pitch.compute(base_pitch, madgwick_user.getPitch(), dt);
+	//外側ループ: 角度誤差 → 目標角速度（P制御）
+	roll_rate_sp	= rateLimit(ANGLE_KP * (base_roll  - madgwick_user.getRoll()));
+	pitch_rate_sp	= rateLimit(ANGLE_KP * (base_pitch - madgwick_user.getPitch()));
+
+	//内側ループ: 目標角速度とジャイロの角速度でPID
+	//（Madgwick の Roll はジャイロX軸、Pitch はジャイロY軸まわりの回転で増える）
+	roll_output		= pid_roll_rate.compute(roll_rate_sp, imu.gx, dt);
+	pitch_output	= pid_pitch_rate.compute(pitch_rate_sp, imu.gy, dt);
 
 	mix(base_thrust, roll_output, pitch_output);
 	outputMotors();
@@ -174,6 +186,12 @@ void DroneController::debug_angle(){
 	printf("%f\t,",madgwick_user.getRoll());
 	printf("%f\t,",madgwick_user.getPitch());
 	printf("dt=%.4f\t,i2c_err=%lu",last_dt,(unsigned long)imu_err_count);
+	printf("\n");
+}
+
+void DroneController::debug_rate(){
+	printf("roll sp:%.1f gx:%.1f\t,",roll_rate_sp,imu.gx);
+	printf("pitch sp:%.1f gy:%.1f",pitch_rate_sp,imu.gy);
 	printf("\n");
 }
 

@@ -28,6 +28,16 @@
 #define ROLL_STICK_DIR			(+1.0f)
 #define PITCH_STICK_DIR			(+1.0f)
 
+// カスケード制御
+// 外側ループ: 角度誤差[deg] → 目標角速度[deg/s]（P制御）
+#define ANGLE_KP				4.0f	// 未チューニングの仮値
+// 目標角速度の上限。ジャイロのフルスケール（現在 ±250dps）より小さくすること
+#define MAX_RATE_DPS			200.0f
+// 内側ループ（角速度PID）の制限
+#define RATE_I_LIMIT			100.0f	// I項の上限（PWMカウント）
+#define RATE_OUT_LIMIT			400.0f	// 出力の上限（PWMカウント）
+#define RATE_D_CUTOFF_HZ		30.0f	// D項LPFのカットオフ周波数
+
 // モータ出力（LEDC 10bit）
 #define MOTOR_PWM_MIN			0
 #define MOTOR_PWM_MAX			1023

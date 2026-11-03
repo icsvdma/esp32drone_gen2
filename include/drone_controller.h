@@ -16,7 +16,7 @@ class DroneController {
 		Motor m1, m2, m3, m4;
 		madgwick_filter madgwick_user;
 		MPU6050_user mpu_user;
-		PIDController pid_roll, pid_pitch;
+		PIDController pid_roll_rate, pid_pitch_rate;	//内側ループ（角速度PID）
 		PS3Controller ps3ctrl;
 		LEDController ledctrl;
 		Battery_ADC batt_adc;
@@ -25,6 +25,8 @@ class DroneController {
 		uint32_t imu_err_count		= 0;
 		float last_dt				= CONTROL_DT_NOMINAL;
 	
+		float roll_rate_sp			= 0;	//外側ループの出力 = 内側ループの目標角速度[deg/s]
+		float pitch_rate_sp			= 0;
 		float roll_output			= 0;
 		float pitch_output			= 0;
 
@@ -51,9 +53,9 @@ class DroneController {
 				
 				madgwick_user(0, 0, 0),
 				mpu_user(&madgwick_user,I2C_NUM_0),
-				pid_roll(),
-				pid_pitch(),
-				ps3ctrl(&pid_roll , &pid_pitch),
+				pid_roll_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
+				pid_pitch_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
+				ps3ctrl(&pid_roll_rate , &pid_pitch_rate),
 				ledctrl()								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
 		{}
 
@@ -63,6 +65,7 @@ class DroneController {
 		void debug_rpy();
 		void debug_base_rp();
 		void debug_angle();
+		void debug_rate();
 		void debug_motor_param();
 };
 
