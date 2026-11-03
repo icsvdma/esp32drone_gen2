@@ -7,6 +7,7 @@
 #include "ps3_ctrl.h"
 #include "led_ctrl.h"
 #include "define_system.h"
+#include "flight_config.h"
 #include "madgwick_filter.h"
 #include "batt_adc.h"
 
@@ -20,15 +21,21 @@ class DroneController {
 		LEDController ledctrl;
 		Battery_ADC batt_adc;
 
-		float angle_x = 0;
-		float angle_y = 0;
+		ImuSample imu				= {};
+		uint32_t imu_err_count		= 0;
+		float last_dt				= CONTROL_DT_NOMINAL;
 	
-		int16_t roll_output;
-		int16_t pitch_output;
+		int16_t roll_output			= 0;
+		int16_t pitch_output		= 0;
 
 		uint16_t base_thrust	= 0;
 		int16_t base_roll		= 0;
 		int16_t base_pitch		= 0;
+
+		int last_pid_mode		= -1;
+
+		static void controlTask(void *param);
+		void step(float dt);
 	public:
 		DroneController() :
 				m1(MOT_FR_OUT, LEDC_CHANNEL_0),
@@ -40,12 +47,13 @@ class DroneController {
 				mpu_user(&madgwick_user,I2C_NUM_0),
 				pid_roll(),
 				pid_pitch(),
-				ledctrl(),								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
-				ps3ctrl(&pid_roll , &pid_pitch)
+				ps3ctrl(&pid_roll , &pid_pitch),
+				ledctrl()								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
 		{}
 
 		void init();
-		void update(float dt);
+		void start();
+		void service();
 		void debug_rpy();
 		void debug_base_rp();
 		void debug_angle();

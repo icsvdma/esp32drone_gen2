@@ -1,9 +1,7 @@
-#include "motor.h"
-#include "mpu6050.h"
-#include "pid_controller.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
 #include "drone_controller.h"
-#include "madgwick_filter.h"
-#include "define_system.h"
 
 //Droneクラス初期化	
 void DroneController::init() {
@@ -18,8 +16,8 @@ void DroneController::init() {
 	//wakeupを送信
 	mpu_user.mpu_write_data();
 
-	//センサのフィルタを使用するために初期化を行う
-	madgwick_user.init();
+	//センサのフィルタを使用するために初期化を行う（制御周期と一致させる）
+	madgwick_user.init(CONTROL_HZ);
 
 	//コントローラの初期化
 	ps3ctrl.init();
@@ -45,23 +43,71 @@ void DroneController::init() {
 
 	//バッテリ電圧監視タスクの起動
 	batt_adc.start();
-
-	//センサ値取得タスクの起動
-	mpu_user.start();
 }
 
-//Droneクラス実行処理
-void DroneController::update(float dt) {
-	
-	//フィルタの処理を行う
-	// madgwick_user.update();
-	
-	//TODO:割り込み処理で優先度マックスで動作させる
+//制御タスクを起動する
+void DroneController::start() {
+	xTaskCreatePinnedToCore(DroneController::controlTask, "ctrl_task",
+							CONTROL_TASK_STACK, this,
+							CONTROL_TASK_PRIORITY, NULL, CONTROL_TASK_CORE);
+}
+
+//制御タスク本体
+//vTaskDelayUntil で周期を固定し、dt は実測値を使う
+void DroneController::controlTask(void *param) {
+	DroneController* self = static_cast<DroneController*>(param);
+
+	TickType_t last_wake = xTaskGetTickCount();
+	int64_t prev_us = esp_timer_get_time();
+
+	while (1) {
+		vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
+
+		int64_t now_us = esp_timer_get_time();
+		float dt = (now_us - prev_us) * 1e-6f;
+		prev_us = now_us;
+		//異常値（初回やデバッガ停止後など）は公称値に置き換える
+		if (dt <= 0.0f || dt > CONTROL_DT_NOMINAL * 4) {
+			dt = CONTROL_DT_NOMINAL;
+		}
+		self->step(dt);
+	}
+}
+
+//制御タスク以外（loop）から呼ぶ。LED表示・デバッグ出力
+void DroneController::service() {
+	//PIDパラメータの選択状態を取得してLEDに反映する（変化したときだけ更新）
+	int mode = ps3ctrl.getPidAly();
+	if (mode != last_pid_mode) {
+		ledctrl.updatePidMode(mode);
+		last_pid_mode = mode;
+	}
+
+#ifdef DEBUG_MODE
+	//mpu_user.debug_sensor();
+	//madgwick_user.debug_madrpy();
+	//debug_rpy();
+	//debug_base_rp();
+	//debug_angle();
+	//ps3ctrl.debug_raw_param();
+	//ps3ctrl.debug_target_param();
+	debug_motor_param();
+#endif
+}
+
+//1制御周期ぶんの処理（センサ読み → 姿勢推定 → PID → モータ出力）
+void DroneController::step(float dt) {
+	last_dt = dt;
+
+	//センサを読んで姿勢推定を更新する
+	if (mpu_user.read(imu) == ESP_OK) {
+		madgwick_user.update_mad(imu.ax, imu.ay, imu.az, imu.gx, imu.gy, imu.gz);
+	} else {
+		imu_err_count++;
+	}
+
 	//コントローラの制御状態を更新する
 	ps3ctrl.update();
-
-	//PIDパラメータの選択状態を取得してLEDに反映する
-	ledctrl.updatePidMode(ps3ctrl.getPidAly());
 
 	//コントローラから推力を取得して制御する
 	base_thrust	= ps3ctrl.getThrust();
@@ -73,16 +119,7 @@ void DroneController::update(float dt) {
 	roll_output = (int16_t)pid_roll.compute(base_roll, madgwick_user.getRoll(), dt);
 	pitch_output = (int16_t)pid_pitch.compute(base_pitch, madgwick_user.getPitch(), dt);
 
-#ifdef DEBUG_MODE
-	//mpu_user.debug_sensor();
-	//madgwick.debug_madrpy();
-	//debug_rpy();
-	//debug_base_rp();
-	//debug_angle();
-	//ps3ctrl.debug_raw_param();
-	//ps3ctrl.debug_target_param();
-	debug_motor_param();
-#else
+#ifndef DEBUG_MODE
 	m1.set_speed(m1.clip_param(base_thrust - roll_output - pitch_output));  // front-right		MOT_FR_OUT
 	m2.set_speed(m2.clip_param(base_thrust + roll_output - pitch_output));  // front-left		MOT_FL_OUT
 	m3.set_speed(m3.clip_param(base_thrust - roll_output + pitch_output));  // back-right		MOT_RR_OUT
@@ -110,8 +147,9 @@ void DroneController::debug_base_rp(){
 }
 
 void DroneController::debug_angle(){
-	printf("%f\t,",angle_x);
-	printf("%f\t,",angle_y);
+	printf("%f\t,",madgwick_user.getRoll());
+	printf("%f\t,",madgwick_user.getPitch());
+	printf("dt=%.4f\t,i2c_err=%lu",last_dt,(unsigned long)imu_err_count);
 	printf("\n");
 }
 

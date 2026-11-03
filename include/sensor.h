@@ -33,6 +33,12 @@
 
 class madgwick_filter;
 
+// オフセット補正・単位換算後のIMUデータ
+struct ImuSample {
+	float ax, ay, az;	// [g]
+	float gx, gy, gz;	// [deg/s]
+};
+
 class MPU6050_user {
 	
 	private:
@@ -75,12 +81,10 @@ class MPU6050_user {
 
 		esp_err_t 		init_mpu();
 		esp_err_t		calibrate();
+		esp_err_t		read(ImuSample &out);
 
 		void 			debug_sensor();
 		//esp_err_t read_accel_gyro();
-
-		static void		taskUpdate(void *param);
-		void			start();
 };
 
 #endif

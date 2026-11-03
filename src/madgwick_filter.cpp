@@ -1,27 +1,15 @@
 
+#include <stdio.h>
 #include "madgwick_filter.h"
-#include "sensor.h"
 
 
-void madgwick_filter::init() {
-	madgwick.begin(100);
+//sample_hz は update_mad() を呼ぶ周期と必ず一致させること
+void madgwick_filter::init(float sample_hz) {
+	madgwick.begin(sample_hz);
 }
 
+//加速度[g]、角速度[deg/s]を受け取る（オフセット補正・単位換算はセンサ側で実施済み）
 void madgwick_filter::update_mad(float ax,float ay,float az,float gx,float gy,float gz) {
-	//ax				= ;
-	//ay				= ;
-	//az				= ;
-	//gx				= ;
-	//gy				= ;
-	//gz				= ;
-
-	ax				= ax / ACCEL_LSB_PER_G;
-	ay				= ay / ACCEL_LSB_PER_G;
-	az				= az / ACCEL_LSB_PER_G;
-	gx				= gx / GYRO_LSB_PER_DPS;
-	gy				= gy / GYRO_LSB_PER_DPS;
-	gz				= gz / GYRO_LSB_PER_DPS;
-	
 	madgwick.updateIMU(gx, gy, gz, ax, ay, az);
 
 	mad_roll		= madgwick.getRoll();

@@ -23,7 +23,7 @@ class madgwick_filter {
 			  mad_pitch(init_mad_pitch),
 			  mad_yaw(init_mad_yaw) {}
 
-		void init();
+		void init(float sample_hz);
 		void update_mad(float ax,float ay,float az,float gx,float gy,float gz);
 
 		float getRoll();

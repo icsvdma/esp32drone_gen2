@@ -20,7 +20,7 @@ esp_err_t MPU6050_user::init() {
 	conf.scl_io_num			= I2C_MASTER_SCL_IO;
 	conf.sda_pullup_en		= GPIO_PULLUP_DISABLE;
 	conf.scl_pullup_en		= GPIO_PULLUP_DISABLE;
-	conf.master.clk_speed	= 100000;
+	conf.master.clk_speed	= I2C_MASTER_FREQ_HZ;
 
 	esp_err_t err = i2c_param_config(i2c_master_port, &conf);
 	if(err != ESP_OK) {
@@ -67,7 +67,7 @@ esp_err_t MPU6050_user::read_bytes(uint8_t reg_addr, uint8_t *data, size_t lengt
 	}
 	i2c_master_read_byte(cmd, data + length - 1, I2C_MASTER_NACK);
 	i2c_master_stop(cmd);
-	esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS(1000));
+	esp_err_t ret = i2c_master_cmd_begin(I2C_MASTER_NUM, cmd, pdMS_TO_TICKS(3));	//制御周期内に収まるよう短めにする
 	i2c_cmd_link_delete(cmd);
 	return ret;
 }
@@ -188,31 +188,20 @@ esp_err_t MPU6050_user::calibrate() {
 	return ESP_FAIL;
 }
 
-void MPU6050_user::taskUpdate(void *param) {
-	MPU6050_user* self = static_cast<MPU6050_user*>(param);
-
-	TickType_t xLastWakeTime = xTaskGetTickCount();
-	const TickType_t xFrequency = pdMS_TO_TICKS(10); // 10ms周期
-
-	while (1) {
-		if (self->read_raw() == ESP_OK) {
-			//キャリブレーションで求めたオフセットを差し引いてからフィルタへ渡す
-			self->mad_user->update_mad(
-				(float)(self->ax - self->ax_ofs),
-				(float)(self->ay - self->ay_ofs),
-				(float)(self->az - self->az_ofs),
-				(float)(self->gx - self->gx_ofs),
-				(float)(self->gy - self->gy_ofs),
-				(float)(self->gz - self->gz_ofs));
-		}
-		vTaskDelayUntil(&xLastWakeTime, xFrequency);
+//センサを読み、オフセット補正と単位換算をして返す（制御タスクから呼ぶ）
+esp_err_t MPU6050_user::read(ImuSample &out) {
+	esp_err_t ret = read_raw();
+	if (ret != ESP_OK) {
+		return ret;
 	}
+	out.ax = (float)(ax - ax_ofs) / ACCEL_LSB_PER_G;
+	out.ay = (float)(ay - ay_ofs) / ACCEL_LSB_PER_G;
+	out.az = (float)(az - az_ofs) / ACCEL_LSB_PER_G;
+	out.gx = (float)(gx - gx_ofs) / GYRO_LSB_PER_DPS;
+	out.gy = (float)(gy - gy_ofs) / GYRO_LSB_PER_DPS;
+	out.gz = (float)(gz - gz_ofs) / GYRO_LSB_PER_DPS;
+	return ESP_OK;
 }
-
-extern "C" void MPU6050_user::start() {
-		xTaskCreate(MPU6050_user::taskUpdate, "mpu_taskUpdate", 4096, this, 5, NULL);
-    }
-
 
 void MPU6050_user::debug_sensor(){
 	printf("ax: %d\t ay: %d\t az: %d\t", ax, ay, az);
