@@ -1,6 +1,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_timer.h"
+#include <math.h>
+#include <Preferences.h>
 #include "drone_controller.h"
 
 //Droneクラス初期化	
@@ -18,6 +20,9 @@ void DroneController::init() {
 
 	//センサのフィルタを使用するために初期化を行う（制御周期と一致させる）
 	madgwick_user.init(CONTROL_HZ);
+
+	//Roll/Pitch 角速度PIDのゲインを読み込む（NVSに保存値がなければ初期値）
+	loadGains();
 
 	//ヨーのゲインは固定値（十字キーでの調整対象外）
 	pid_yaw_rate.setGains(YAW_RATE_KP, YAW_RATE_KI, YAW_RATE_KD);
@@ -79,6 +84,23 @@ void DroneController::controlTask(void *param) {
 
 //制御タスク以外（loop）から呼ぶ。LED表示・デバッグ出力
 void DroneController::service() {
+	//ゲインが変わったら表示する（printf は制御タスクでは行わない）
+	if (gains_changed) {
+		gains_changed = false;
+		printGains();
+	}
+
+	//ゲインの保存要求。NVS書き込み中はフラッシュアクセスで両コアが止まることがあるため
+	//スロットル0のときだけ実行する
+	if (save_requested) {
+		save_requested = false;
+		if (ps3ctrl.getThrust() == 0) {
+			saveGains();
+		} else {
+			printf("[gain] save rejected: set throttle to 0\n");
+		}
+	}
+
 	//PIDパラメータの選択状態を取得してLEDに反映する（変化したときだけ更新）
 	int mode = ps3ctrl.getPidAly();
 	if (mode != last_pid_mode) {
@@ -97,6 +119,73 @@ void DroneController::service() {
 	//ps3ctrl.debug_target_param();
 	debug_motor_param();
 #endif
+}
+
+//==========================================================
+//PIDゲイン管理
+//==========================================================
+
+//PS3のボタン操作をまとめて処理する（制御タスクから呼ぶ）
+void DroneController::handleCommands() {
+	Ps3Command cmd;
+	while (ps3ctrl.popCommand(cmd)) {
+		if (cmd.type == PS3_CMD_SAVE_GAINS) {
+			save_requested = true;
+		} else {
+			applyGainCommand(cmd);
+			gains_changed = true;
+		}
+	}
+}
+
+//Roll と Pitch は同じゲインで調整する
+void DroneController::applyGainCommand(const Ps3Command &cmd) {
+	int dir = (cmd.type == PS3_CMD_GAIN_UP) ? 1 : -1;
+	switch (cmd.term) {
+		case 0:	pid_roll_rate.set_kp(dir);	pid_pitch_rate.set_kp(dir);	break;
+		case 1:	pid_roll_rate.set_ki(dir);	pid_pitch_rate.set_ki(dir);	break;
+		case 2:	pid_roll_rate.set_kd(dir);	pid_pitch_rate.set_kd(dir);	break;
+		default: break;
+	}
+}
+
+//保存値が壊れている（NaN・負・上限超え）ときは初期値を使う
+static float validGain(float v, float max_v, float def) {
+	if (isnan(v) || v < 0.0f || v > max_v) return def;
+	return v;
+}
+
+void DroneController::loadGains() {
+	Preferences prefs;
+	float kp = RATE_KP_DEFAULT, ki = RATE_KI_DEFAULT, kd = RATE_KD_DEFAULT;
+	if (prefs.begin("pid", true)) {		//読み取り専用
+		kp = validGain(prefs.getFloat("rp_kp", RATE_KP_DEFAULT), KP_MAX, RATE_KP_DEFAULT);
+		ki = validGain(prefs.getFloat("rp_ki", RATE_KI_DEFAULT), KI_MAX, RATE_KI_DEFAULT);
+		kd = validGain(prefs.getFloat("rp_kd", RATE_KD_DEFAULT), KD_MAX, RATE_KD_DEFAULT);
+		prefs.end();
+	}
+	pid_roll_rate.setGains(kp, ki, kd);
+	pid_pitch_rate.setGains(kp, ki, kd);
+	printGains();
+}
+
+void DroneController::saveGains() {
+	Preferences prefs;
+	if (!prefs.begin("pid", false)) {
+		printf("[gain] save failed: NVS open error\n");
+		return;
+	}
+	prefs.putFloat("rp_kp", pid_roll_rate.get_kp());
+	prefs.putFloat("rp_ki", pid_roll_rate.get_ki());
+	prefs.putFloat("rp_kd", pid_roll_rate.get_kd());
+	prefs.end();
+	printf("[gain] saved\n");
+	printGains();
+}
+
+void DroneController::printGains() {
+	printf("[gain] rate kp:%.3f ki:%.3f kd:%.4f\n",
+		pid_roll_rate.get_kp(), pid_roll_rate.get_ki(), pid_roll_rate.get_kd());
 }
 
 static float rateLimit(float rate) {
@@ -118,6 +207,8 @@ void DroneController::step(float dt) {
 
 	//コントローラの制御状態を更新する
 	ps3ctrl.update();
+	//ボタン操作（ゲイン変更など）を反映する
+	handleCommands();
 
 	//コントローラから推力を取得して制御する
 	base_thrust	= ps3ctrl.getThrust();

@@ -43,6 +43,15 @@ class DroneController {
 
 		int last_pid_mode		= -1;
 
+		volatile bool gains_changed		= false;	//制御タスク → service() への通知
+		volatile bool save_requested	= false;
+
+		void handleCommands();
+		void applyGainCommand(const Ps3Command &cmd);
+		void loadGains();
+		void saveGains();
+		void printGains();
+
 		static void controlTask(void *param);
 		void step(float dt);
 		void mix(float thrust, float roll, float pitch, float yaw);
@@ -59,7 +68,7 @@ class DroneController {
 				pid_roll_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
 				pid_pitch_rate(RATE_I_LIMIT, RATE_OUT_LIMIT, RATE_D_CUTOFF_HZ),
 				pid_yaw_rate(YAW_I_LIMIT, YAW_OUT_LIMIT, 0),
-				ps3ctrl(&pid_roll_rate , &pid_pitch_rate),
+				ps3ctrl(),
 				ledctrl()								//TODO:	コンストラクタの初期化によってGPIOポート番号を指定するようにする
 		{}
 

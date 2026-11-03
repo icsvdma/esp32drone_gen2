@@ -2,7 +2,6 @@
 # include "Arduino.h"
 # include "Ps3Controller.h"
 # include "ps3_ctrl.h"
-# include "pid_controller.h"
 # include "flight_config.h"
 
 //PS3Controller usr_ps3ctrl;
@@ -14,6 +13,7 @@ PS3Controller* PS3Controller::instance = nullptr;
 
 void PS3Controller::init(){
 	instance = this;
+	cmd_queue = xQueueCreate(16, sizeof(Ps3Command));
 
 	Ps3.attach((void (*)())PS3Controller::staticNotify);
 	//Ps3.attachOnConnect(PS3Controller::staticOnConnect);
@@ -113,34 +113,29 @@ void PS3Controller::notify() {
 		pid_aly = (pid_aly + 2) % 3;	//0 + 2 % 3 = 2
 		
 	}
+	//ゲインの変更は制御タスクで行う（ここではコマンドを送るだけ）
 	if(Ps3.event.button_down.up){
-		switch(pid_aly){
-			case 0	:	pid_roll->set_kp(1);
-						pid_pitch->set_kp(1);
-						break;
-			case 1	:	pid_roll->set_ki(1);
-						pid_pitch->set_ki(1);
-						break;
-			case 2	:	pid_roll->set_kd(1);
-						pid_pitch->set_kd(1);
-						break;
-			default :	break;
-		}
+		pushCommand(PS3_CMD_GAIN_UP);
 	}
 	if(Ps3.event.button_down.down){
-		switch(pid_aly){
-			case 0	:	pid_roll->set_kp(0);
-						pid_pitch->set_kp(0);
-						break;
-			case 1	:	pid_roll->set_ki(0);
-						pid_pitch->set_ki(0);
-						break;
-			case 2	:	pid_roll->set_kd(0);
-						pid_pitch->set_kd(0);
-						break;
-			default :	break;
-		}
+		pushCommand(PS3_CMD_GAIN_DOWN);
 	}
+	//SELECT: 現在のゲインをNVSに保存（スロットル0のときだけ実行される）
+	if(Ps3.event.button_down.select){
+		pushCommand(PS3_CMD_SAVE_GAINS);
+	}
+}
+
+void PS3Controller::pushCommand(Ps3CmdType type){
+	if (cmd_queue == NULL) return;
+	Ps3Command cmd = { type, pid_aly };
+	xQueueSend(cmd_queue, &cmd, 0);	//満杯なら捨てる（待たない）
+}
+
+//制御タスクから呼ぶ。コマンドがあれば true
+bool PS3Controller::popCommand(Ps3Command &cmd){
+	if (cmd_queue == NULL) return false;
+	return xQueueReceive(cmd_queue, &cmd, 0) == pdTRUE;
 }
 
 int PS3Controller::getPidAly(){

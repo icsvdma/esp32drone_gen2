@@ -40,6 +40,22 @@
 #define RATE_OUT_LIMIT			400.0f	// 出力の上限（PWMカウント）
 #define RATE_D_CUTOFF_HZ		30.0f	// D項LPFのカットオフ周波数
 
+// Roll/Pitch 角速度PIDのゲイン初期値（NVSに保存値がなければこれを使う）
+// 単位: 出力[PWMカウント] / 角速度誤差[deg/s]。未チューニングの仮値
+#define RATE_KP_DEFAULT			0.5f
+#define RATE_KI_DEFAULT			0.5f
+#define RATE_KD_DEFAULT			0.005f
+
+// 十字キーでのゲイン調整
+// 1回の増減幅 = 現在値 × GAIN_STEP_RATIO（ただし最小 *_STEP_MIN）。0〜*_MAX に制限
+#define GAIN_STEP_RATIO			0.1f
+#define KP_STEP_MIN				0.05f
+#define KI_STEP_MIN				0.05f
+#define KD_STEP_MIN				0.0005f
+#define KP_MAX					5.0f
+#define KI_MAX					5.0f
+#define KD_MAX					0.1f
+
 // ヨー制御（6軸IMUではヨー角の絶対値は分からないので、角速度だけを制御する）
 // スティック中立で「回転速度 0」を保つ
 #define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度

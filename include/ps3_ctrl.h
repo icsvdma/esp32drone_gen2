@@ -1,12 +1,25 @@
 #ifndef PS3CTRL_H
 #define PS3CTRL_H
 
-#include "pid_controller.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+
+// コントローラのボタン操作を制御タスクへ渡すためのコマンド
+// （ボタンのコールバックは Bluetooth タスクで動くので、PIDゲインを直接書き換えない）
+enum Ps3CmdType : uint8_t {
+	PS3_CMD_GAIN_UP,
+	PS3_CMD_GAIN_DOWN,
+	PS3_CMD_SAVE_GAINS,
+};
+struct Ps3Command {
+	Ps3CmdType	type;
+	uint8_t		term;	// 0:P 1:I 2:D
+};
 
 class PS3Controller {
 	private:
-		PIDController* pid_roll;
-		PIDController* pid_pitch;
+		QueueHandle_t cmd_queue = NULL;
+		void pushCommand(Ps3CmdType type);
 
 		uint16_t throttle_target= 0;
 		float pitch_target		= 0;
@@ -28,8 +41,7 @@ class PS3Controller {
 		//C++の非staticメンバ関数は暗黙的にthisポインタを取るため、void MyClass::myFunc()は実際にはvoid(MyClass* this)という形になり、ISRとしては渡せません。
 		static PS3Controller* instance;  // グローバルに1インスタンスのみ対応
 
-		//drone_controllerクラスから継承する
-		PS3Controller(PIDController* inst_roll , PIDController* inst_pitch) : pid_roll(inst_roll) , pid_pitch(inst_pitch) {}
+		PS3Controller() {}
 
 		void init();
 		void onConnect();
@@ -41,6 +53,7 @@ class PS3Controller {
 		float getPitch();
 		float getYawRate();
 		int getPidAly();
+		bool popCommand(Ps3Command &cmd);
 		uint16_t mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max);
 		static float stickNorm(int8_t raw);
 		void notify();
