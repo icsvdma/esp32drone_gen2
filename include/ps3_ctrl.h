@@ -28,7 +28,7 @@ class PS3Controller {
 		volatile uint32_t last_packet_ms = 0;	//最後にパケットを受信した時刻（Bluetoothタスクが更新）
 		bool link_alive = false;
 
-		uint16_t throttle_target= 0;
+		float throttle_stick	= 0;	//左スティック上下（上が正、-1.0〜+1.0）
 		float pitch_target		= 0;
 		float roll_target		= 0;
 		float yaw_rate_target	= 0;
@@ -54,11 +54,10 @@ class PS3Controller {
 		bool isLinkAlive();
 		void debug_raw_param();
 		void debug_target_param();
-		uint16_t getThrust();
+		float getThrottleStick();
 		float getRoll();
 		float getPitch();
 		float getYawRate();
-		uint16_t mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max);
 		static float stickNorm(int8_t raw);
 
 		//ボタンのイベント（ButtonTracker::PRESSED / SHORT / LONG の組み合わせ）

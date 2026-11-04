@@ -26,8 +26,9 @@ void PS3Controller::update(uint32_t now_ms){
 
 	if (link_alive) {
 
+		// 左スティック上下 → スロットルを変える速さ（ly は上に倒すと負になるので符号を反転）
 		ly = Ps3.data.analog.stick.ly;
-		throttle_target = mapTarget_th((-1 * ly), 0, 128, 0, 1024); // 仮のスロットル範囲 1024は制御マックス値なのでマージンが必要
+		throttle_stick = -stickNorm(ly);
 
 		// 右スティック上下 → ピッチ
 		ry = Ps3.data.analog.stick.ry;
@@ -45,7 +46,7 @@ void PS3Controller::update(uint32_t now_ms){
 	}
 	else{
 		//通信断: 最後の入力を保持せず、すべて0にする
-		throttle_target	= 0;
+		throttle_stick	= 0;
 		pitch_target	= 0;
 		roll_target		= 0;
 		yaw_rate_target	= 0;
@@ -86,18 +87,6 @@ bool PS3Controller::isLinkAlive(){
 	return link_alive;
 }
 
-uint16_t PS3Controller::mapTarget_th(int x , int in_min , int in_max , int out_min , int out_max){
-	static uint16_t target_data;
-
-	if(x < 0){
-		return 0;
-	}
-	else {
-		target_data = (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-		return target_data;
-	}
-}
-
 //スティックの生値(-128〜127)を -1.0〜+1.0 に正規化する
 //中立付近(STICK_DEADBAND以内)は厳密に0にし、不感帯の外側から0→1へ連続的に変化させる
 //（以前の整数マッピングは中立で -1 になり、常に-1度の指令が出ていた）
@@ -112,8 +101,8 @@ float PS3Controller::stickNorm(int8_t raw){
 	return (v < 0) ? -s : s;
 }
 
-uint16_t PS3Controller::getThrust(){
-	return throttle_target;
+float PS3Controller::getThrottleStick(){
+	return throttle_stick;
 }
 float PS3Controller::getRoll(){
 	return roll_target;
@@ -134,7 +123,7 @@ void PS3Controller::debug_raw_param(){
 }
 
 void PS3Controller::debug_target_param(){
-	printf("target_th : %d \t",throttle_target);
+	printf("throttle_stick : %.2f \t",throttle_stick);
 	printf("target_roll : %.2f \t",roll_target);
 	printf("target_pitch : %.2f \t",pitch_target);
 	printf("target_yaw_rate : %.1f \n",yaw_rate_target);

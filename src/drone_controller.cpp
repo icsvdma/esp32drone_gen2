@@ -301,7 +301,7 @@ void DroneController::updateArmState(uint32_t now_ms) {
 			disarm(EV_DISARM_IMU);							//センサ異常
 		} else if (fabsf(roll) > TILT_CUTOFF_DEG || fabsf(pitch) > TILT_CUTOFF_DEG) {
 			disarm(EV_DISARM_TILT);							//転倒
-		} else if (base_thrust == 0) {
+		} else if (base_thrust <= 0.0f) {
 			if ((uint32_t)(now_ms - zero_thr_since_ms) > AUTO_DISARM_MS) {
 				disarm(EV_DISARM_AUTO);						//スロットル0のまま放置
 			}
@@ -329,8 +329,8 @@ void DroneController::tryArm(uint32_t now_ms) {
 		ui_events.push(EV_REJECT_CALIB);
 	} else if (!ps3ctrl.isLinkAlive()) {
 		ui_events.push(EV_REJECT_LINK);
-	} else if (base_thrust != 0) {
-		ui_events.push(EV_REJECT_THROTTLE);						//急にモータが回らないようスロットル0のときだけ
+	} else if (ps3ctrl.getThrottleStick() > 0.0f) {
+		ui_events.push(EV_REJECT_THROTTLE);					//アームした瞬間にスロットルが上がり始めないよう、スティックを上に倒していないときだけ
 	} else if (fabsf(roll) > ARM_MAX_TILT_DEG || fabsf(pitch) > ARM_MAX_TILT_DEG) {
 		ui_events.push(EV_REJECT_TILT);
 	} else {
@@ -343,6 +343,7 @@ void DroneController::tryArm(uint32_t now_ms) {
 
 void DroneController::disarm(UiEvent reason) {
 	armed = false;
+	throttle = 0;
 	resetControllers();
 	stopMotors();
 	ui_events.push(reason);
@@ -371,7 +372,7 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_DISARM_IMU:			return "disarmed (IMU error)";
 		case EV_DISARM_AUTO:		return "disarmed (idle timeout)";
 		case EV_REJECT_LINK:		return "arm rejected: no controller link";
-		case EV_REJECT_THROTTLE:	return "arm rejected: throttle not zero";
+		case EV_REJECT_THROTTLE:	return "arm rejected: throttle stick is pushed up";
 		case EV_REJECT_TILT:		return "arm rejected: not level";
 		case EV_REJECT_CALIB:		return "arm rejected: calibration failed";
 		case EV_TUNE_ON:			return "tuning mode ON";
@@ -382,6 +383,25 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_SAVE_REJECT_ARMED:	return "save rejected: disarm first";
 		default:					return "?";
 	}
+}
+
+//増減式スロットル（#8）
+//左スティック上下の倒し量で変化の速さを決め、中央なら今の値を保つ
+//飛行モード中に十字キー下を押している間は、速く下げる
+//ディスアーム中は常に0
+void DroneController::updateThrottle(float dt) {
+	if (!armed) {
+		throttle = 0;
+		return;
+	}
+	float in = ps3ctrl.getThrottleStick();
+	float rate = in * fabsf(in) * THROTTLE_RATE;		//2乗カーブ（符号は保つ）
+	if (!tune_mode && ps3ctrl.btnHeld(BTN_DOWN)) {
+		rate = -THROTTLE_RATE * THROTTLE_FAST_DESCEND_MUL;
+	}
+	throttle += rate * dt;
+	if (throttle < 0.0f)         throttle = 0.0f;
+	if (throttle > THROTTLE_MAX) throttle = THROTTLE_MAX;
 }
 
 static float rateLimit(float rate) {
@@ -410,11 +430,13 @@ void DroneController::step(float dt) {
 	//ボタン操作（アーム・調整モードなど）を反映する
 	handleButtons(now_ms);
 
-	//コントローラから推力を取得して制御する
-	base_thrust	= ps3ctrl.getThrust();
+	//スロットルを更新する（増減式）
+	updateThrottle(dt);
+	base_thrust	= throttle;
 
-	//アーム/ディスアームの判定（フェイルセーフを含む）
+	//アーム/ディスアームの判定（フェイルセーフを含む）。ディスアームするとスロットルは0に戻る
 	updateArmState(now_ms);
+	base_thrust	= throttle;
 
 	//ディスアーム中、またはスロットルが低いときはモータを止めてPIDをリセットする
 	//（地上でI項が溜まって、離陸の瞬間に傾くのを防ぐ）
@@ -479,14 +501,14 @@ void DroneController::outputMotors() {
 //==========================================================
 
 void DroneController::debug_rpy(){
-	printf("%d,",base_thrust);
+	printf("%.0f,",base_thrust);
 	printf("%.1f,",roll_output);
 	printf("%.1f,",pitch_output);
 	printf("\n");
 }
 
 void DroneController::debug_base_rp(){
-	printf("%d\t,",base_thrust);
+	printf("%.0f\t,",base_thrust);
 	printf("%.2f\t,",base_roll);
 	printf("%.2f\t,",base_pitch);
 	printf("\n");

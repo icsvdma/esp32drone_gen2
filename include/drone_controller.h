@@ -38,7 +38,8 @@ class DroneController {
 		enum { MOT_FR = 0, MOT_FL, MOT_RR, MOT_RL, MOT_NUM };
 		uint16_t motor_out[MOT_NUM]	= {0};
 
-		uint16_t base_thrust	= 0;
+		float throttle			= 0;	//増減式スロットルの現在値（制御タスクだけが書き換える）
+		float base_thrust		= 0;
 		float base_roll			= 0;
 		float base_pitch		= 0;
 
@@ -77,6 +78,7 @@ class DroneController {
 		uint32_t zero_thr_since_ms		= 0;
 		bool last_armed_led				= false;
 
+		void updateThrottle(float dt);
 		void updateArmState(uint32_t now_ms);
 		void tryArm(uint32_t now_ms);
 		void disarm(UiEvent reason);

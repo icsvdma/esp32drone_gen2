@@ -18,6 +18,13 @@
 // LED更新・デバッグ出力など、制御以外の処理の周期
 #define SERVICE_PERIOD_MS		50
 
+// スロットル（増減式）
+// 左スティック上下の倒し量で「スロットルを変える速さ」を決める。中央（不感帯）なら今の値を保つ
+// 中央付近で細かく調整できるよう、倒し量は2乗してから使う
+#define THROTTLE_RATE			600.0f	// スティックいっぱいでの変化の速さ[PWMカウント/秒]（仮の値）
+#define THROTTLE_FAST_DESCEND_MUL	3.0f	// 十字キー下（飛行モード）で下げるときの速さの倍率
+#define THROTTLE_MAX			870		// スロットルの上限（MOTOR_PWM_MAX の約85%。姿勢制御の余裕を残す。#4）
+
 // スティック入力
 #define STICK_DEADBAND			6		// 中立付近の不感帯（生値, 最大127）
 #define MAX_ANGLE_DEG			30.0f	// Roll/Pitch の最大目標角度[deg]
