@@ -10,6 +10,7 @@
 #include "flight_config.h"
 #include "madgwick_filter.h"
 #include "batt_adc.h"
+#include "event_ring.h"
 
 class DroneController {
 	private:
@@ -41,10 +42,10 @@ class DroneController {
 		float base_roll			= 0;
 		float base_pitch		= 0;
 
-		int last_pid_mode		= -1;
+		int last_pid_mode		= -2;
 
-		// アーム状態（制御タスクだけが書き換える）
-		enum ArmEvent : uint8_t {
+		// 制御タスク → service()（loop）への通知。表示・保存などに使う
+		enum UiEvent : uint8_t {
 			EV_NONE = 0,
 			EV_ARMED,
 			EV_DISARM_BUTTON,
@@ -56,27 +57,52 @@ class DroneController {
 			EV_REJECT_THROTTLE,
 			EV_REJECT_TILT,
 			EV_REJECT_CALIB,
+			EV_TUNE_ON,
+			EV_TUNE_OFF,
+			EV_TUNE_REJECT_ARMED,
+			EV_TUNE_CHANGED,
+			EV_TUNE_LIMIT,
+			EV_TUNE_RESET,
+			EV_SAVE_REQUEST,
+			EV_SAVE_REJECT_ARMED,
 		};
+		EventRing<16> ui_events;
+		static const char* uiEventStr(uint8_t ev);
+
+		// アーム状態（制御タスクだけが書き換える）
 		volatile bool armed				= false;
 		bool arm_toggle_req				= false;
 		bool calib_ok					= false;
 		uint32_t imu_fail_streak		= 0;
 		uint32_t zero_thr_since_ms		= 0;
-		volatile uint8_t arm_event		= EV_NONE;	//制御タスク → service() への通知（表示用）
 		bool last_armed_led				= false;
 
 		void updateArmState(uint32_t now_ms);
 		void tryArm(uint32_t now_ms);
-		void disarm(ArmEvent reason);
+		void disarm(UiEvent reason);
 		void stopMotors();
 		void resetControllers();
-		static const char* armEventStr(uint8_t ev);
 
-		volatile bool gains_changed		= false;	//制御タスク → service() への通知
-		volatile bool save_requested	= false;
+		// ゲイン調整モード（制御タスクだけが書き換える）
+		// 調整できる項目。Roll と Pitch の角速度PIDは同じ値を使う
+		enum TuneItem : uint8_t {
+			TUNE_RATE_KP = 0,
+			TUNE_RATE_KI,
+			TUNE_RATE_KD,
+			TUNE_ANGLE_KP,
+			TUNE_YAW_KP,
+			TUNE_YAW_KI,
+			TUNE_NUM
+		};
+		volatile bool tune_mode			= false;
+		volatile uint8_t tune_item		= TUNE_RATE_KP;
+		float tune_val[TUNE_NUM]		= {0};
+		float angle_kp					= ANGLE_KP_DEFAULT;
 
-		void handleCommands();
-		void applyGainCommand(const Ps3Command &cmd);
+		void handleButtons(uint32_t now_ms);
+		void stepTune(int dir);
+		void resetTuneItem();
+		void applyTuneValues();
 		void loadGains();
 		void saveGains();
 		void printGains();

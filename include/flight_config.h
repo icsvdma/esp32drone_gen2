@@ -32,7 +32,7 @@
 
 // カスケード制御
 // 外側ループ: 角度誤差[deg] → 目標角速度[deg/s]（P制御）
-#define ANGLE_KP				4.0f	// 未チューニングの仮値
+#define ANGLE_KP_DEFAULT		4.0f	// 初期値（未チューニングの仮値）。調整モードで変更できる
 // 目標角速度の上限。ジャイロのフルスケール（現在 ±250dps）より小さくすること
 #define MAX_RATE_DPS			200.0f
 // 内側ループ（角速度PID）の制限
@@ -46,7 +46,7 @@
 #define RATE_KI_DEFAULT			0.5f
 #define RATE_KD_DEFAULT			0.005f
 
-// 十字キーでのゲイン調整
+// ゲイン調整モード（十字キーでの調整）
 // 1回の増減幅 = 現在値 × GAIN_STEP_RATIO（ただし最小 *_STEP_MIN）。0〜*_MAX に制限
 #define GAIN_STEP_RATIO			0.1f
 #define KP_STEP_MIN				0.05f
@@ -55,13 +55,18 @@
 #define KP_MAX					5.0f
 #define KI_MAX					5.0f
 #define KD_MAX					0.1f
+#define ANGLE_KP_STEP_MIN		0.1f
+#define ANGLE_KP_MAX			15.0f
+
+// ボタン
+#define BUTTON_LONG_MS			1000	// 長押しと判定する時間
 
 // ヨー制御（6軸IMUではヨー角の絶対値は分からないので、角速度だけを制御する）
 // スティック中立で「回転速度 0」を保つ
 #define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度
-#define YAW_RATE_KP				1.0f	// 未チューニングの仮値
-#define YAW_RATE_KI				0.5f	// 未チューニングの仮値
-#define YAW_RATE_KD				0.0f
+#define YAW_RATE_KP_DEFAULT		1.0f	// 初期値（未チューニングの仮値）。調整モードで変更できる
+#define YAW_RATE_KI_DEFAULT		0.5f	// 初期値（未チューニングの仮値）。調整モードで変更できる
+#define YAW_RATE_KD				0.0f	// 固定
 #define YAW_I_LIMIT				100.0f
 #define YAW_OUT_LIMIT			200.0f	// Roll/Pitch の制御余裕を食いすぎないよう小さめ
 

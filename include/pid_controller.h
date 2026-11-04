@@ -27,9 +27,6 @@ public:
     void reset();
     void setGains(float kp, float ki, float kd);
 
-	void set_kp(int dir);
-	void set_ki(int dir);
-	void set_kd(int dir);
 	float get_kp();
 	float get_ki();
 	float get_kd();

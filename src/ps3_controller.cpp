@@ -4,16 +4,11 @@
 # include "ps3_ctrl.h"
 # include "flight_config.h"
 
-//PS3Controller usr_ps3ctrl;
-
-//TODO:ソース、ヘッダ共に名称は「flightManage.xxxx」に変更する
-
 // static メンバの初期化
 PS3Controller* PS3Controller::instance = nullptr;
 
 void PS3Controller::init(){
 	instance = this;
-	cmd_queue = xQueueCreate(16, sizeof(Ps3Command));
 
 	Ps3.attach((void (*)())PS3Controller::staticNotify);
 	//Ps3.attachOnConnect(PS3Controller::staticOnConnect);
@@ -21,10 +16,6 @@ void PS3Controller::init(){
 	//esp32 bluetooth address
 	Ps3.begin("30:AE:A4:9C:2E:76");	
 }
-
-void PS3Controller::onConnect() {
-	printf("PS3 Controller Connected!");
-}	
 
 //通信状態を判定して入力を更新する（制御タスクから呼ぶ）
 //Ps3.isConnected() は電波が途切れても false にならないことがあるため、
@@ -49,6 +40,8 @@ void PS3Controller::update(uint32_t now_ms){
 		// 左スティック左右 → ヨー角速度
 		lx = Ps3.data.analog.stick.lx;
 		yaw_rate_target = YAW_STICK_DIR * stickNorm(lx) * MAX_YAW_RATE_DPS;
+
+		updateButtons(now_ms);
 	}
 	else{
 		//通信断: 最後の入力を保持せず、すべて0にする
@@ -56,6 +49,36 @@ void PS3Controller::update(uint32_t now_ms){
 		pitch_target	= 0;
 		roll_target		= 0;
 		yaw_rate_target	= 0;
+		//ボタンも「離した」扱いにする（離したことによる短押しイベントは出さない）
+		clearButtons();
+	}
+}
+
+//ボタンの押下状態を読んでイベントを判定する
+//Ps3.data は Bluetooth タスクがまるごとコピーで更新する。読み取り中に更新されても、
+//各ビットは前後どちらかの受信データの値なので、存在しない押下が出ることはない
+void PS3Controller::updateButtons(uint32_t now_ms){
+	const bool held[BTN_NUM] = {
+		(bool)Ps3.data.button.start,
+		(bool)Ps3.data.button.select,
+		(bool)Ps3.data.button.triangle,
+		(bool)Ps3.data.button.circle,
+		(bool)Ps3.data.button.up,
+		(bool)Ps3.data.button.down,
+		(bool)Ps3.data.button.left,
+		(bool)Ps3.data.button.right,
+		(bool)Ps3.data.button.l1,
+		(bool)Ps3.data.button.r1,
+	};
+	for (int i = 0; i < BTN_NUM; i++) {
+		btn_ev[i] = btn[i].update(held[i], now_ms, BUTTON_LONG_MS);
+	}
+}
+
+void PS3Controller::clearButtons(){
+	for (int i = 0; i < BTN_NUM; i++) {
+		btn[i].reset();
+		btn_ev[i] = ButtonTracker::NONE;
 	}
 }
 
@@ -117,50 +140,10 @@ void PS3Controller::debug_target_param(){
 	printf("target_yaw_rate : %.1f \n",yaw_rate_target);
 }
 
+//Bluetooth タスクから受信パケットごとに呼ばれる
+//受信時刻を記録するだけ（通信断の検出に使う）。ボタンの処理は制御タスクの update() で行う
 void PS3Controller::notify() {
-	//受信時刻を記録（通信断の検出に使う）
 	last_packet_ms = millis();
-
-	if(Ps3.event.button_down.right){
-		//pid_aly += 1;
-		pid_aly = (pid_aly + 1) % 3;
-	}
-	if(Ps3.event.button_down.left){
-		//pid_aly -= 1;
-		pid_aly = (pid_aly + 2) % 3;	//0 + 2 % 3 = 2
-		
-	}
-	//ゲインの変更は制御タスクで行う（ここではコマンドを送るだけ）
-	if(Ps3.event.button_down.up){
-		pushCommand(PS3_CMD_GAIN_UP);
-	}
-	if(Ps3.event.button_down.down){
-		pushCommand(PS3_CMD_GAIN_DOWN);
-	}
-	//SELECT: 現在のゲインをNVSに保存（ディスアーム中だけ実行される）
-	if(Ps3.event.button_down.select){
-		pushCommand(PS3_CMD_SAVE_GAINS);
-	}
-	//START: アーム/ディスアームの切り替え
-	if(Ps3.event.button_down.start){
-		pushCommand(PS3_CMD_ARM_TOGGLE);
-	}
-}
-
-void PS3Controller::pushCommand(Ps3CmdType type){
-	if (cmd_queue == NULL) return;
-	Ps3Command cmd = { type, pid_aly };
-	xQueueSend(cmd_queue, &cmd, 0);	//満杯なら捨てる（待たない）
-}
-
-//制御タスクから呼ぶ。コマンドがあれば true
-bool PS3Controller::popCommand(Ps3Command &cmd){
-	if (cmd_queue == NULL) return false;
-	return xQueueReceive(cmd_queue, &cmd, 0) == pdTRUE;
-}
-
-int PS3Controller::getPidAly(){
-	return pid_aly;
 }
 
 // static な中継関数（割り込みハンドラに登録される）

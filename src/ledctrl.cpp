@@ -31,21 +31,23 @@ void LEDController::setRGBcolor(uint8_t r_param,uint8_t g_param,uint8_t b_param)
 	pixels.show();
 }
 
-void LEDController::updatePidMode(uint8_t mode){
-	if(mode == 0){
-		pixels.setPixelColor(0, pixels.Color(30, 0, 0));
-	}
-	else if(mode == 1){
-		pixels.setPixelColor(0, pixels.Color(0, 30, 0));
-	}
-	else if(mode == 2){
-		pixels.setPixelColor(0, pixels.Color(0, 0, 30));
-	}
-	else{
+//調整モードで選んでいる項目を1個目のLEDに表示する（-1: 調整モードではない → 消灯）
+//※ 暫定の表示。色と点滅パターンによる表示は issue #6 で作り直す
+void LEDController::updatePidMode(int mode){
+	static const uint8_t COLORS[][3] = {
+		{30,  0,  0},	//0: rate P
+		{ 0, 30,  0},	//1: rate I
+		{ 0,  0, 30},	//2: rate D
+		{30, 30,  0},	//3: angle P
+		{30,  0, 30},	//4: yaw P
+		{ 0, 30, 30},	//5: yaw I
+	};
+	if (mode >= 0 && mode < (int)(sizeof(COLORS) / sizeof(COLORS[0]))) {
+		pixels.setPixelColor(0, pixels.Color(COLORS[mode][0], COLORS[mode][1], COLORS[mode][2]));
+	} else {
 		pixels.setPixelColor(0, pixels.Color(0, 0, 0));
 	}
 	pixels.show();
-
 }
 
 void LEDController::taskSetBattLowIndicator(){

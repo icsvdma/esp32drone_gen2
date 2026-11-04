@@ -22,11 +22,8 @@ void DroneController::init() {
 	//センサのフィルタを使用するために初期化を行う（制御周期と一致させる）
 	madgwick_user.init(CONTROL_HZ);
 
-	//Roll/Pitch 角速度PIDのゲインを読み込む（NVSに保存値がなければ初期値）
+	//ゲインを読み込む（NVSに保存値がなければ初期値）
 	loadGains();
-
-	//ヨーのゲインは固定値（十字キーでの調整対象外）
-	pid_yaw_rate.setGains(YAW_RATE_KP, YAW_RATE_KI, YAW_RATE_KD);
 
 	//コントローラの初期化
 	ps3ctrl.init();
@@ -86,37 +83,35 @@ void DroneController::controlTask(void *param) {
 
 //制御タスク以外（loop）から呼ぶ。LED表示・デバッグ出力
 void DroneController::service() {
-	//ゲインが変わったら表示する（printf は制御タスクでは行わない）
-	if (gains_changed) {
-		gains_changed = false;
-		printGains();
-	}
-
-	//ゲインの保存要求。NVS書き込み中はフラッシュアクセスで両コアが止まることがあるため
-	//ディスアーム中だけ実行する
-	if (save_requested) {
-		save_requested = false;
-		if (!armed) {
-			saveGains();
-		} else {
-			printf("[gain] save rejected: disarm first\n");
+	//制御タスクからの通知を処理する（printf や NVS への書き込みは制御タスクでは行わない）
+	uint8_t ev;
+	while (ui_events.pop(ev)) {
+		switch (ev) {
+			case EV_TUNE_CHANGED:
+				printGains();
+				break;
+			case EV_SAVE_REQUEST:
+				//NVS書き込み中はフラッシュアクセスで両コアが止まることがあるため、ディスアーム中だけ実行する
+				if (!armed) {
+					saveGains();
+				} else {
+					printf("[gain] %s\n", uiEventStr(EV_SAVE_REJECT_ARMED));
+				}
+				break;
+			default:
+				printf("[ui] %s\n", uiEventStr(ev));
+				break;
 		}
 	}
 
-	//アーム状態の表示
-	uint8_t ev = arm_event;
-	if (ev != EV_NONE) {
-		arm_event = EV_NONE;
-		printf("[arm] %s\n", armEventStr(ev));
-	}
 	bool is_armed = armed;
 	if (is_armed != last_armed_led) {
 		ledctrl.setArmIndicator(is_armed);
 		last_armed_led = is_armed;
 	}
 
-	//PIDパラメータの選択状態を取得してLEDに反映する（変化したときだけ更新）
-	int mode = ps3ctrl.getPidAly();
+	//調整モードで選んでいる項目をLEDに反映する（変化したときだけ更新）
+	int mode = tune_mode ? (int)tune_item : -1;
 	if (mode != last_pid_mode) {
 		ledctrl.updatePidMode(mode);
 		last_pid_mode = mode;
@@ -139,30 +134,111 @@ void DroneController::service() {
 //PIDゲイン管理
 //==========================================================
 
-//PS3のボタン操作をまとめて処理する（制御タスクから呼ぶ）
-void DroneController::handleCommands() {
-	Ps3Command cmd;
-	while (ps3ctrl.popCommand(cmd)) {
-		if (cmd.type == PS3_CMD_SAVE_GAINS) {
-			save_requested = true;
-		} else if (cmd.type == PS3_CMD_ARM_TOGGLE) {
-			arm_toggle_req = true;
+//調整項目の表（名前、NVSのキー、初期値、最小の増減幅、上限）
+struct TuneSpec {
+	const char* name;
+	const char* nvs_key;
+	float def;
+	float step_min;
+	float max;
+};
+static const TuneSpec TUNE_SPECS[] = {
+	{ "rate P",  "rp_kp",  RATE_KP_DEFAULT,     KP_STEP_MIN,       KP_MAX       },
+	{ "rate I",  "rp_ki",  RATE_KI_DEFAULT,     KI_STEP_MIN,       KI_MAX       },
+	{ "rate D",  "rp_kd",  RATE_KD_DEFAULT,     KD_STEP_MIN,       KD_MAX       },
+	{ "angle P", "ang_kp", ANGLE_KP_DEFAULT,    ANGLE_KP_STEP_MIN, ANGLE_KP_MAX },
+	{ "yaw P",   "yaw_kp", YAW_RATE_KP_DEFAULT, KP_STEP_MIN,       KP_MAX       },
+	{ "yaw I",   "yaw_ki", YAW_RATE_KI_DEFAULT, KI_STEP_MIN,       KI_MAX       },
+};
+static_assert(sizeof(TUNE_SPECS) / sizeof(TUNE_SPECS[0]) == 6, "TUNE_SPECS と TuneItem の数を合わせること");
+
+//ボタン操作を処理する（制御タスクから毎周期呼ぶ）
+void DroneController::handleButtons(uint32_t now_ms) {
+	(void)now_ms;
+
+	//START: アーム/ディスアームの切り替え
+	if (ps3ctrl.btnEvent(BTN_START) & ButtonTracker::PRESSED) {
+		arm_toggle_req = true;
+	}
+
+	//SELECT 長押し: 調整モードの切り替え（入るのはディスアーム中だけ。出るのはいつでも）
+	if (ps3ctrl.btnEvent(BTN_SELECT) & ButtonTracker::LONG) {
+		if (tune_mode) {
+			tune_mode = false;
+			ui_events.push(EV_TUNE_OFF);
+		} else if (!armed) {
+			tune_mode = true;
+			ui_events.push(EV_TUNE_ON);
+			ui_events.push(EV_TUNE_CHANGED);	//今の値を表示する
 		} else {
-			applyGainCommand(cmd);
-			gains_changed = true;
+			ui_events.push(EV_TUNE_REJECT_ARMED);
 		}
+	}
+
+	//飛行モードでは、ここから下のボタン（十字キーなど）は何もしない（誤操作の防止）
+	if (!tune_mode) {
+		return;
+	}
+
+	//SELECT 短押し: 保存（ディスアーム中だけ）
+	if (ps3ctrl.btnEvent(BTN_SELECT) & ButtonTracker::SHORT) {
+		ui_events.push(armed ? EV_SAVE_REJECT_ARMED : EV_SAVE_REQUEST);
+	}
+	//十字キー左右: 項目を選ぶ
+	if (ps3ctrl.btnEvent(BTN_RIGHT) & ButtonTracker::PRESSED) {
+		tune_item = (uint8_t)((tune_item + 1) % TUNE_NUM);
+		ui_events.push(EV_TUNE_CHANGED);
+	}
+	if (ps3ctrl.btnEvent(BTN_LEFT) & ButtonTracker::PRESSED) {
+		tune_item = (uint8_t)((tune_item + TUNE_NUM - 1) % TUNE_NUM);
+		ui_events.push(EV_TUNE_CHANGED);
+	}
+	//十字キー上下: 増減
+	if (ps3ctrl.btnEvent(BTN_UP) & ButtonTracker::PRESSED) {
+		stepTune(+1);
+	}
+	if (ps3ctrl.btnEvent(BTN_DOWN) & ButtonTracker::PRESSED) {
+		stepTune(-1);
+	}
+	//△ 長押し: 選んでいる項目を初期値に戻す
+	if (ps3ctrl.btnEvent(BTN_TRIANGLE) & ButtonTracker::LONG) {
+		resetTuneItem();
 	}
 }
 
-//Roll と Pitch は同じゲインで調整する
-void DroneController::applyGainCommand(const Ps3Command &cmd) {
-	int dir = (cmd.type == PS3_CMD_GAIN_UP) ? 1 : -1;
-	switch (cmd.term) {
-		case 0:	pid_roll_rate.set_kp(dir);	pid_pitch_rate.set_kp(dir);	break;
-		case 1:	pid_roll_rate.set_ki(dir);	pid_pitch_rate.set_ki(dir);	break;
-		case 2:	pid_roll_rate.set_kd(dir);	pid_pitch_rate.set_kd(dir);	break;
-		default: break;
+//選んでいる項目を、現在値の GAIN_STEP_RATIO 倍（最小 step_min）だけ増減する
+//0〜上限に制限する（負のゲインは正帰還になって発散するので禁止）
+void DroneController::stepTune(int dir) {
+	const TuneSpec &sp = TUNE_SPECS[tune_item];
+	float v = tune_val[tune_item];
+	float step = v * GAIN_STEP_RATIO;
+	if (step < sp.step_min) step = sp.step_min;
+	float nv = v + ((dir > 0) ? step : -step);
+	if (nv < 0.0f)   nv = 0.0f;
+	if (nv > sp.max) nv = sp.max;
+
+	if (nv == v) {
+		ui_events.push(EV_TUNE_LIMIT);		//上限・下限でこれ以上変わらない
+		return;
 	}
+	tune_val[tune_item] = nv;
+	applyTuneValues();
+	ui_events.push(EV_TUNE_CHANGED);
+}
+
+void DroneController::resetTuneItem() {
+	tune_val[tune_item] = TUNE_SPECS[tune_item].def;
+	applyTuneValues();
+	ui_events.push(EV_TUNE_RESET);
+	ui_events.push(EV_TUNE_CHANGED);
+}
+
+//調整値を各制御器に反映する（制御タスクか、制御タスク起動前の init() から呼ぶ）
+void DroneController::applyTuneValues() {
+	pid_roll_rate.setGains(tune_val[TUNE_RATE_KP], tune_val[TUNE_RATE_KI], tune_val[TUNE_RATE_KD]);
+	pid_pitch_rate.setGains(tune_val[TUNE_RATE_KP], tune_val[TUNE_RATE_KI], tune_val[TUNE_RATE_KD]);
+	angle_kp = tune_val[TUNE_ANGLE_KP];
+	pid_yaw_rate.setGains(tune_val[TUNE_YAW_KP], tune_val[TUNE_YAW_KI], YAW_RATE_KD);
 }
 
 //保存値が壊れている（NaN・負・上限超え）ときは初期値を使う
@@ -173,15 +249,13 @@ static float validGain(float v, float max_v, float def) {
 
 void DroneController::loadGains() {
 	Preferences prefs;
-	float kp = RATE_KP_DEFAULT, ki = RATE_KI_DEFAULT, kd = RATE_KD_DEFAULT;
-	if (prefs.begin("pid", true)) {		//読み取り専用
-		kp = validGain(prefs.getFloat("rp_kp", RATE_KP_DEFAULT), KP_MAX, RATE_KP_DEFAULT);
-		ki = validGain(prefs.getFloat("rp_ki", RATE_KI_DEFAULT), KI_MAX, RATE_KI_DEFAULT);
-		kd = validGain(prefs.getFloat("rp_kd", RATE_KD_DEFAULT), KD_MAX, RATE_KD_DEFAULT);
-		prefs.end();
+	bool opened = prefs.begin("pid", true);		//読み取り専用。保存値がなければ失敗する
+	for (int i = 0; i < TUNE_NUM; i++) {
+		const TuneSpec &sp = TUNE_SPECS[i];
+		tune_val[i] = opened ? validGain(prefs.getFloat(sp.nvs_key, sp.def), sp.max, sp.def) : sp.def;
 	}
-	pid_roll_rate.setGains(kp, ki, kd);
-	pid_pitch_rate.setGains(kp, ki, kd);
+	if (opened) prefs.end();
+	applyTuneValues();
 	printGains();
 }
 
@@ -191,17 +265,22 @@ void DroneController::saveGains() {
 		printf("[gain] save failed: NVS open error\n");
 		return;
 	}
-	prefs.putFloat("rp_kp", pid_roll_rate.get_kp());
-	prefs.putFloat("rp_ki", pid_roll_rate.get_ki());
-	prefs.putFloat("rp_kd", pid_roll_rate.get_kd());
+	for (int i = 0; i < TUNE_NUM; i++) {
+		prefs.putFloat(TUNE_SPECS[i].nvs_key, tune_val[i]);
+	}
 	prefs.end();
 	printf("[gain] saved\n");
 	printGains();
 }
 
 void DroneController::printGains() {
-	printf("[gain] rate kp:%.3f ki:%.3f kd:%.4f\n",
-		pid_roll_rate.get_kp(), pid_roll_rate.get_ki(), pid_roll_rate.get_kd());
+	printf("[gain] rate P:%.3f I:%.3f D:%.4f / angle P:%.2f / yaw P:%.3f I:%.3f",
+		tune_val[TUNE_RATE_KP], tune_val[TUNE_RATE_KI], tune_val[TUNE_RATE_KD],
+		tune_val[TUNE_ANGLE_KP], tune_val[TUNE_YAW_KP], tune_val[TUNE_YAW_KI]);
+	if (tune_mode) {
+		printf("  [selected: %s]", TUNE_SPECS[tune_item].name);
+	}
+	printf("\n");
 }
 
 //==========================================================
@@ -247,26 +326,26 @@ void DroneController::tryArm(uint32_t now_ms) {
 	float pitch = madgwick_user.getPitch();
 
 	if (!calib_ok) {
-		arm_event = EV_REJECT_CALIB;
+		ui_events.push(EV_REJECT_CALIB);
 	} else if (!ps3ctrl.isLinkAlive()) {
-		arm_event = EV_REJECT_LINK;
+		ui_events.push(EV_REJECT_LINK);
 	} else if (base_thrust != 0) {
-		arm_event = EV_REJECT_THROTTLE;						//急にモータが回らないようスロットル0のときだけ
+		ui_events.push(EV_REJECT_THROTTLE);						//急にモータが回らないようスロットル0のときだけ
 	} else if (fabsf(roll) > ARM_MAX_TILT_DEG || fabsf(pitch) > ARM_MAX_TILT_DEG) {
-		arm_event = EV_REJECT_TILT;
+		ui_events.push(EV_REJECT_TILT);
 	} else {
 		resetControllers();
 		zero_thr_since_ms = now_ms;		//スロットル0放置タイマーの起点
 		armed = true;
-		arm_event = EV_ARMED;
+		ui_events.push(EV_ARMED);
 	}
 }
 
-void DroneController::disarm(ArmEvent reason) {
+void DroneController::disarm(UiEvent reason) {
 	armed = false;
 	resetControllers();
 	stopMotors();
-	arm_event = reason;
+	ui_events.push(reason);
 }
 
 void DroneController::stopMotors() {
@@ -283,7 +362,7 @@ void DroneController::resetControllers() {
 	pid_yaw_rate.reset();
 }
 
-const char* DroneController::armEventStr(uint8_t ev) {
+const char* DroneController::uiEventStr(uint8_t ev) {
 	switch (ev) {
 		case EV_ARMED:				return "ARMED";
 		case EV_DISARM_BUTTON:		return "disarmed (button)";
@@ -295,6 +374,12 @@ const char* DroneController::armEventStr(uint8_t ev) {
 		case EV_REJECT_THROTTLE:	return "arm rejected: throttle not zero";
 		case EV_REJECT_TILT:		return "arm rejected: not level";
 		case EV_REJECT_CALIB:		return "arm rejected: calibration failed";
+		case EV_TUNE_ON:			return "tuning mode ON";
+		case EV_TUNE_OFF:			return "tuning mode OFF (flight mode)";
+		case EV_TUNE_REJECT_ARMED:	return "tuning mode rejected: disarm first";
+		case EV_TUNE_LIMIT:			return "gain is at its limit";
+		case EV_TUNE_RESET:			return "gain reset to default";
+		case EV_SAVE_REJECT_ARMED:	return "save rejected: disarm first";
 		default:					return "?";
 	}
 }
@@ -322,8 +407,8 @@ void DroneController::step(float dt) {
 
 	//コントローラの制御状態を更新する（通信断なら入力はすべて0になる）
 	ps3ctrl.update(now_ms);
-	//ボタン操作（ゲイン変更・アームなど）を反映する
-	handleCommands();
+	//ボタン操作（アーム・調整モードなど）を反映する
+	handleButtons(now_ms);
 
 	//コントローラから推力を取得して制御する
 	base_thrust	= ps3ctrl.getThrust();
@@ -344,8 +429,8 @@ void DroneController::step(float dt) {
 	base_pitch	= ps3ctrl.getPitch();
 
 	//外側ループ: 角度誤差 → 目標角速度（P制御）
-	roll_rate_sp	= rateLimit(ANGLE_KP * (base_roll  - madgwick_user.getRoll()));
-	pitch_rate_sp	= rateLimit(ANGLE_KP * (base_pitch - madgwick_user.getPitch()));
+	roll_rate_sp	= rateLimit(angle_kp * (base_roll  - madgwick_user.getRoll()));
+	pitch_rate_sp	= rateLimit(angle_kp * (base_pitch - madgwick_user.getPitch()));
 
 	//内側ループ: 目標角速度とジャイロの角速度でPID
 	//（Madgwick の Roll はジャイロX軸、Pitch はジャイロY軸まわりの回転で増える）
