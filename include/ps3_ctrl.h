@@ -41,6 +41,21 @@ class PS3Controller {
 		ButtonTracker btn[BTN_NUM];
 		uint8_t btn_ev[BTN_NUM]	= {0};
 
+		volatile uint8_t ctrl_battery = 0;	//コントローラ自身の電池（Ps3.data.status.battery。0: 未受信）
+
+		// コントローラへの通知（振動・プレイヤーLED）。service()（loop）からだけ使う
+		struct RumblePattern {
+			uint8_t  pulses_left;
+			uint16_t on_ms;
+			uint16_t off_ms;
+			uint8_t  intensity;		//0〜100
+			bool     on;
+			uint32_t next_ms;
+		};
+		RumblePattern rumble_pat	= {};
+		bool hold_rumble_on			= false;
+		int  cur_player				= -1;	//最後に送ったプレイヤー番号（-1: 未送信）
+
 		void updateButtons(uint32_t now_ms);
 		void clearButtons();
 		
@@ -65,6 +80,13 @@ class PS3Controller {
 		uint8_t btnEvent(Ps3Btn b) const { return btn_ev[b]; }
 		bool btnHeld(Ps3Btn b) const { return btn[b].isHeld(); }
 		uint32_t btnHeldMs(Ps3Btn b, uint32_t now_ms) const { return btn[b].heldMs(now_ms); }
+
+		//コントローラの電池が少ない（dying 以下）か。未受信のときは false
+		bool isControllerBatteryDying();
+
+		//コントローラへの通知（service() から呼ぶ。Bluetooth の命令を送るため制御タスクからは呼ばない）
+		void playRumble(uint8_t pulses, uint16_t on_ms, uint16_t off_ms, uint8_t intensity, uint32_t now_ms);
+		void serviceFeedback(uint32_t now_ms, bool hold_rumble, int player);
 
 		void notify();
 		static void staticNotify();

@@ -42,6 +42,8 @@ void PS3Controller::update(uint32_t now_ms){
 		lx = Ps3.data.analog.stick.lx;
 		yaw_rate_target = YAW_STICK_DIR * stickNorm(lx) * MAX_YAW_RATE_DPS;
 
+		ctrl_battery = (uint8_t)Ps3.data.status.battery;
+
 		updateButtons(now_ms);
 	}
 	else{
@@ -127,6 +129,79 @@ void PS3Controller::debug_target_param(){
 	printf("target_roll : %.2f \t",roll_target);
 	printf("target_pitch : %.2f \t",pitch_target);
 	printf("target_yaw_rate : %.1f \n",yaw_rate_target);
+}
+
+bool PS3Controller::isControllerBatteryDying(){
+	uint8_t b = ctrl_battery;
+	return b == ps3_status_battery_shutdown || b == ps3_status_battery_dying;
+}
+
+//==========================================================
+//コントローラへの通知（振動・プレイヤーLED）
+//esp32-ps3 の仕様（ライブラリのソースで確認）
+//  setRumble(強さ 0〜100, 時間 0〜5000 / -1 で止めるまで)
+//  setPlayer(番号): 0 = 全消灯、1〜4 = LED1〜4、5〜10 = 組み合わせ。接続時にライブラリが 1 にする
+//  setPlayer() は振動を 0 にした命令を送るので、振動中には送らない
+//==========================================================
+
+//振動のパターンを鳴らす（短い振動を pulses 回）
+//時間の単位がライブラリで明記されていないため、止めるときも強さ0の命令を明示的に送る
+void PS3Controller::playRumble(uint8_t pulses, uint16_t on_ms, uint16_t off_ms, uint8_t intensity, uint32_t now_ms){
+	rumble_pat.pulses_left	= pulses;
+	rumble_pat.on_ms		= on_ms;
+	rumble_pat.off_ms		= off_ms;
+	rumble_pat.intensity	= intensity;
+	rumble_pat.on			= false;
+	rumble_pat.next_ms		= now_ms;
+	hold_rumble_on			= false;	//押し続けている間の弱い振動は、パターンが終わってから出し直す
+}
+
+//service() から周期的に呼ぶ
+//  hold_rumble : true の間は弱く振動し続ける（START 長押し中の合図）
+//  player      : 表示したいプレイヤー番号
+void PS3Controller::serviceFeedback(uint32_t now_ms, bool hold_rumble, int player){
+	if (!link_alive) {
+		//切断中は何も送らない。再接続したら送り直す
+		rumble_pat.pulses_left = 0;
+		rumble_pat.on = false;
+		hold_rumble_on = false;
+		cur_player = -1;
+		return;
+	}
+
+	//振動パターン（他の命令より優先。パターン中は他の命令を送らない）
+	if (rumble_pat.pulses_left > 0 || rumble_pat.on) {
+		if ((int32_t)(now_ms - rumble_pat.next_ms) >= 0) {
+			if (rumble_pat.on) {
+				Ps3.setRumble(0, 0);
+				rumble_pat.on = false;
+				rumble_pat.next_ms = now_ms + rumble_pat.off_ms;
+			} else {
+				Ps3.setRumble(rumble_pat.intensity, rumble_pat.on_ms);
+				rumble_pat.on = true;
+				rumble_pat.pulses_left--;
+				rumble_pat.next_ms = now_ms + rumble_pat.on_ms;
+			}
+		}
+		return;
+	}
+
+	//押し続けている間の弱い振動
+	if (hold_rumble != hold_rumble_on) {
+		if (hold_rumble) {
+			Ps3.setRumble(FB_HOLD_RUMBLE_INTENSITY, -1);
+		} else {
+			Ps3.setRumble(0, 0);
+		}
+		hold_rumble_on = hold_rumble;
+		return;
+	}
+
+	//プレイヤーLED（振動していないときだけ。変わったときだけ送る）
+	if (!hold_rumble_on && player != cur_player) {
+		Ps3.setPlayer(player);
+		cur_player = player;
+	}
 }
 
 //Bluetooth タスクから受信パケットごとに呼ばれる

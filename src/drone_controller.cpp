@@ -83,9 +83,19 @@ void DroneController::controlTask(void *param) {
 
 //制御タスク以外（loop）から呼ぶ。LED表示・デバッグ出力
 void DroneController::service() {
+	uint32_t now_ms = millis();
+
+	//コントローラの電池が少なくなったら知らせる（少なくなった瞬間に1回）
+	bool ctrl_dying = ps3ctrl.isControllerBatteryDying();
+	if (ctrl_dying && !last_ctrl_batt_dying) {
+		ui_events.push(EV_CTRL_BATT_DYING);
+	}
+	last_ctrl_batt_dying = ctrl_dying;
+
 	//制御タスクからの通知を処理する（printf や NVS への書き込みは制御タスクでは行わない）
 	uint8_t ev;
 	while (ui_events.pop(ev)) {
+		feedbackForEvent(ev, now_ms);
 		switch (ev) {
 			case EV_TUNE_CHANGED:
 				printGains();
@@ -110,6 +120,12 @@ void DroneController::service() {
 		last_armed_led = is_armed;
 	}
 
+	//コントローラへの通知を進める
+	//  START を押している間は弱く振動（長押しの合図）
+	//  プレイヤーLED: 飛行モードは 1、調整モードは選んでいる項目の番号（1〜6）
+	int player = tune_mode ? (int)tune_item + 1 : 1;
+	ps3ctrl.serviceFeedback(now_ms, ps3ctrl.btnHeld(BTN_START), player);
+
 	//調整モードで選んでいる項目をLEDに反映する（変化したときだけ更新）
 	int mode = tune_mode ? (int)tune_item : -1;
 	if (mode != last_pid_mode) {
@@ -128,6 +144,53 @@ void DroneController::service() {
 	//ps3ctrl.debug_target_param();
 	debug_motor_param();
 #endif
+}
+
+//出来事に応じてコントローラを振動させる（#8 の 4.）
+//  1回短く: アームした・調整モードの切り替え
+//  1回長く: ディスアームした
+//  2回短く: 断られた・上限/下限
+//  3回短く: コントローラの電池が少ない
+//  軽く1回: ゲインの変更・項目の選択
+void DroneController::feedbackForEvent(uint8_t ev, uint32_t now_ms) {
+	switch (ev) {
+		case EV_ARMED:
+		case EV_TUNE_ON:
+		case EV_TUNE_OFF:
+		case EV_TUNE_RESET:
+			ps3ctrl.playRumble(1, FB_SHORT_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY, now_ms);
+			break;
+		case EV_DISARM_BUTTON:
+		case EV_DISARM_TILT:
+		case EV_DISARM_IMU:
+		case EV_DISARM_AUTO:
+		case EV_DISARM_KILL:
+		case EV_DISARM_LANDED:
+			ps3ctrl.playRumble(1, FB_LONG_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY, now_ms);
+			break;
+		case EV_REJECT_LINK:
+		case EV_REJECT_THROTTLE:
+		case EV_REJECT_TILT:
+		case EV_REJECT_CALIB:
+		case EV_REJECT_CTRL_BATT:
+		case EV_TUNE_REJECT_ARMED:
+		case EV_TUNE_LIMIT:
+		case EV_SAVE_REJECT_ARMED:
+		case EV_HINT_HOLD_ARM:
+		case EV_HINT_HOLD_DISARM:
+			ps3ctrl.playRumble(2, FB_SHORT_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY, now_ms);
+			break;
+		case EV_CTRL_BATT_DYING:
+			ps3ctrl.playRumble(3, FB_SHORT_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY, now_ms);
+			break;
+		case EV_TUNE_CHANGED:
+			ps3ctrl.playRumble(1, FB_TICK_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY / 2, now_ms);
+			break;
+		default:
+			//通信断で止まったときは、コントローラに届かないので振動しない
+			//TODO: バッテリー低下の振動は、電圧測定の修正（#5）のあとで追加する
+			break;
+	}
 }
 
 //==========================================================
@@ -385,6 +448,8 @@ void DroneController::tryArm(uint32_t now_ms) {
 		ui_events.push(EV_REJECT_CALIB);
 	} else if (!ps3ctrl.isLinkAlive()) {
 		ui_events.push(EV_REJECT_LINK);
+	} else if (ps3ctrl.isControllerBatteryDying()) {
+		ui_events.push(EV_REJECT_CTRL_BATT);				//コントローラの電池が少ないと通信が切れやすい
 	} else if (ps3ctrl.getThrottleStick() > 0.0f) {
 		ui_events.push(EV_REJECT_THROTTLE);					//アームした瞬間にスロットルが上がり始めないよう、スティックを上に倒していないときだけ
 	} else if (fabsf(roll) > ARM_MAX_TILT_DEG || fabsf(pitch) > ARM_MAX_TILT_DEG) {
@@ -435,6 +500,8 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_REJECT_THROTTLE:	return "arm rejected: throttle stick is pushed up";
 		case EV_REJECT_TILT:		return "arm rejected: not level";
 		case EV_REJECT_CALIB:		return "arm rejected: calibration failed";
+		case EV_REJECT_CTRL_BATT:	return "arm rejected: controller battery is low";
+		case EV_CTRL_BATT_DYING:	return "controller battery is low - charge it";
 		case EV_HINT_HOLD_ARM:		return "hold START for 1s to arm";
 		case EV_HINT_HOLD_DISARM:	return "flying: hold START for 1s to disarm (L1+R1 = emergency stop)";
 		case EV_TUNE_ON:			return "tuning mode ON";

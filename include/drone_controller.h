@@ -60,6 +60,8 @@ class DroneController {
 			EV_REJECT_THROTTLE,
 			EV_REJECT_TILT,
 			EV_REJECT_CALIB,
+			EV_REJECT_CTRL_BATT,
+			EV_CTRL_BATT_DYING,
 			EV_HINT_HOLD_ARM,
 			EV_HINT_HOLD_DISARM,
 			EV_TUNE_ON,
@@ -73,6 +75,7 @@ class DroneController {
 		};
 		EventRing<16> ui_events;
 		static const char* uiEventStr(uint8_t ev);
+		void feedbackForEvent(uint8_t ev, uint32_t now_ms);
 
 		// アーム状態（制御タスクだけが書き換える）
 		volatile bool armed				= false;
@@ -85,6 +88,7 @@ class DroneController {
 		bool has_flown					= false;	//アーム後に一度でもモータが回るスロットルにしたか
 		uint32_t landed_since_ms		= 0;		//着陸状態が始まった時刻（0: 着陸状態ではない）
 		bool last_armed_led				= false;
+		bool last_ctrl_batt_dying		= false;
 
 		void updateThrottle(float dt);
 		void updateArmState(uint32_t now_ms);

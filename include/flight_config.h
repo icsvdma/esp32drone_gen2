@@ -68,6 +68,14 @@
 // ボタン
 #define BUTTON_LONG_MS			1000	// 長押しと判定する時間
 
+// コントローラへの通知（振動の強さは 0〜100）
+#define FB_RUMBLE_INTENSITY		100		// 通知の振動の強さ
+#define FB_HOLD_RUMBLE_INTENSITY	30		// START を押し続けている間の弱い振動
+#define FB_SHORT_MS				150		// 短い振動
+#define FB_LONG_MS				600		// 長い振動
+#define FB_GAP_MS				150		// 振動と振動の間
+#define FB_TICK_MS				100		// ゲイン変更などの軽い合図
+
 // ヨー制御（6軸IMUではヨー角の絶対値は分からないので、角速度だけを制御する）
 // スティック中立で「回転速度 0」を保つ
 #define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度
