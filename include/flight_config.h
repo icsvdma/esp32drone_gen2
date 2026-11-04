@@ -90,6 +90,12 @@
 #define AUTO_DISARM_MS			10000	// スロットル0のままこの時間経過したらディスアーム
 #define IMU_FAIL_MAX			25		// センサ読み出しがこの回数連続で失敗したらディスアーム（250Hzで100ms）
 
+// 着陸の自動検出: アーム後に一度飛んだ（スロットルが THROTTLE_MIN_CONTROL 以上になった）あと、
+// モータが止まっていて・傾きが小さく・角速度が小さい状態が続いたらディスアームする
+#define LAND_DETECT_MS			2000
+#define LAND_MAX_TILT_DEG		20.0f
+#define LAND_MAX_RATE_DPS		15.0f
+
 // モータ出力（LEDC 10bit）
 #define MOTOR_PWM_MIN			0
 #define MOTOR_PWM_MAX			1023

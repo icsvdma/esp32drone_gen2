@@ -322,6 +322,8 @@ void DroneController::updateArmState(uint32_t now_ms) {
 			disarm(EV_DISARM_IMU);							//センサ異常
 		} else if (fabsf(roll) > TILT_CUTOFF_DEG || fabsf(pitch) > TILT_CUTOFF_DEG) {
 			disarm(EV_DISARM_TILT);							//転倒
+		} else if (checkLanded(now_ms)) {
+			disarm(EV_DISARM_LANDED);						//着陸した
 		} else if (base_thrust <= 0.0f) {
 			if ((uint32_t)(now_ms - zero_thr_since_ms) > AUTO_DISARM_MS) {
 				disarm(EV_DISARM_AUTO);						//スロットル0のまま放置
@@ -347,6 +349,33 @@ void DroneController::updateArmState(uint32_t now_ms) {
 	arm_req = ARM_REQ_NONE;
 }
 
+//着陸の自動検出（アーム中に毎周期呼ぶ）
+//一度飛んだあと、モータが止まっていて・傾きが小さく・角速度が小さい状態が
+//LAND_DETECT_MS 続いたら true。アーム直後（まだ飛んでいない）は判定しない
+bool DroneController::checkLanded(uint32_t now_ms) {
+	if (base_thrust >= THROTTLE_MIN_CONTROL) {
+		has_flown = true;
+	}
+
+	bool still = has_flown
+			&& base_thrust < THROTTLE_MIN_CONTROL
+			&& fabsf(madgwick_user.getRoll())  < LAND_MAX_TILT_DEG
+			&& fabsf(madgwick_user.getPitch()) < LAND_MAX_TILT_DEG
+			&& fabsf(imu.gx) < LAND_MAX_RATE_DPS
+			&& fabsf(imu.gy) < LAND_MAX_RATE_DPS
+			&& fabsf(imu.gz) < LAND_MAX_RATE_DPS;
+
+	if (!still) {
+		landed_since_ms = 0;
+		return false;
+	}
+	if (landed_since_ms == 0) {
+		landed_since_ms = now_ms;
+		return false;
+	}
+	return (uint32_t)(now_ms - landed_since_ms) >= LAND_DETECT_MS;
+}
+
 //アームできる条件をすべて満たしたときだけアームする
 void DroneController::tryArm(uint32_t now_ms) {
 	float roll  = madgwick_user.getRoll();
@@ -363,6 +392,8 @@ void DroneController::tryArm(uint32_t now_ms) {
 	} else {
 		resetControllers();
 		zero_thr_since_ms = now_ms;		//スロットル0放置タイマーの起点
+		has_flown = false;
+		landed_since_ms = 0;
 		armed = true;
 		ui_events.push(EV_ARMED);
 	}
@@ -399,6 +430,7 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_DISARM_IMU:			return "disarmed (IMU error)";
 		case EV_DISARM_AUTO:		return "disarmed (idle timeout)";
 		case EV_DISARM_KILL:		return "disarmed (EMERGENCY STOP)";
+		case EV_DISARM_LANDED:		return "disarmed (landed)";
 		case EV_REJECT_LINK:		return "arm rejected: no controller link";
 		case EV_REJECT_THROTTLE:	return "arm rejected: throttle stick is pushed up";
 		case EV_REJECT_TILT:		return "arm rejected: not level";

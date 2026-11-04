@@ -55,6 +55,7 @@ class DroneController {
 			EV_DISARM_IMU,
 			EV_DISARM_AUTO,
 			EV_DISARM_KILL,
+			EV_DISARM_LANDED,
 			EV_REJECT_LINK,
 			EV_REJECT_THROTTLE,
 			EV_REJECT_TILT,
@@ -81,10 +82,13 @@ class DroneController {
 		bool calib_ok					= false;
 		uint32_t imu_fail_streak		= 0;
 		uint32_t zero_thr_since_ms		= 0;
+		bool has_flown					= false;	//アーム後に一度でもモータが回るスロットルにしたか
+		uint32_t landed_since_ms		= 0;		//着陸状態が始まった時刻（0: 着陸状態ではない）
 		bool last_armed_led				= false;
 
 		void updateThrottle(float dt);
 		void updateArmState(uint32_t now_ms);
+		bool checkLanded(uint32_t now_ms);
 		void tryArm(uint32_t now_ms);
 		void disarm(UiEvent reason);
 		void stopMotors();
