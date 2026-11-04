@@ -54,10 +54,13 @@ class DroneController {
 			EV_DISARM_TILT,
 			EV_DISARM_IMU,
 			EV_DISARM_AUTO,
+			EV_DISARM_KILL,
 			EV_REJECT_LINK,
 			EV_REJECT_THROTTLE,
 			EV_REJECT_TILT,
 			EV_REJECT_CALIB,
+			EV_HINT_HOLD_ARM,
+			EV_HINT_HOLD_DISARM,
 			EV_TUNE_ON,
 			EV_TUNE_OFF,
 			EV_TUNE_REJECT_ARMED,
@@ -72,7 +75,9 @@ class DroneController {
 
 		// アーム状態（制御タスクだけが書き換える）
 		volatile bool armed				= false;
-		bool arm_toggle_req				= false;
+		enum ArmRequest : uint8_t { ARM_REQ_NONE = 0, ARM_REQ_ARM, ARM_REQ_DISARM, ARM_REQ_KILL };
+		ArmRequest arm_req				= ARM_REQ_NONE;
+		bool kill_combo_prev			= false;
 		bool calib_ok					= false;
 		uint32_t imu_fail_streak		= 0;
 		uint32_t zero_thr_since_ms		= 0;

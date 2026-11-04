@@ -156,9 +156,30 @@ static_assert(sizeof(TUNE_SPECS) / sizeof(TUNE_SPECS[0]) == 6, "TUNE_SPECS と T
 void DroneController::handleButtons(uint32_t now_ms) {
 	(void)now_ms;
 
-	//START: アーム/ディスアームの切り替え
-	if (ps3ctrl.btnEvent(BTN_START) & ButtonTracker::PRESSED) {
-		arm_toggle_req = true;
+	//緊急停止: L1 + R1 同時押しで、どの状態でもすぐ止める
+	bool kill_combo = ps3ctrl.btnHeld(BTN_L1) && ps3ctrl.btnHeld(BTN_R1);
+	if (kill_combo && !kill_combo_prev) {
+		arm_req = ARM_REQ_KILL;
+	}
+	kill_combo_prev = kill_combo;
+
+	//START
+	//  長押し: ディスアーム中ならアーム、アーム中ならディスアーム（飛行中でも可）
+	//  短押し: スロットルが低い（モータが止まっている）ときだけディスアーム
+	//          飛行中に1回押しただけでは止まらない（誤操作での墜落を防ぐ）
+	uint8_t start_ev = ps3ctrl.btnEvent(BTN_START);
+	if (arm_req != ARM_REQ_KILL) {
+		if (start_ev & ButtonTracker::LONG) {
+			arm_req = armed ? ARM_REQ_DISARM : ARM_REQ_ARM;
+		} else if (start_ev & ButtonTracker::SHORT) {
+			if (!armed) {
+				ui_events.push(EV_HINT_HOLD_ARM);
+			} else if (throttle < THROTTLE_MIN_CONTROL) {
+				arm_req = ARM_REQ_DISARM;
+			} else {
+				ui_events.push(EV_HINT_HOLD_DISARM);
+			}
+		}
 	}
 
 	//SELECT 長押し: 調整モードの切り替え（入るのはディスアーム中だけ。出るのはいつでも）
@@ -310,14 +331,20 @@ void DroneController::updateArmState(uint32_t now_ms) {
 		}
 	}
 
-	if (arm_toggle_req) {
-		arm_toggle_req = false;
-		if (armed) {
-			disarm(EV_DISARM_BUTTON);
-		} else {
-			tryArm(now_ms);
-		}
+	switch (arm_req) {
+		case ARM_REQ_KILL:
+			if (armed) disarm(EV_DISARM_KILL);
+			break;
+		case ARM_REQ_DISARM:
+			if (armed) disarm(EV_DISARM_BUTTON);
+			break;
+		case ARM_REQ_ARM:
+			if (!armed) tryArm(now_ms);
+			break;
+		default:
+			break;
 	}
+	arm_req = ARM_REQ_NONE;
 }
 
 //アームできる条件をすべて満たしたときだけアームする
@@ -371,10 +398,13 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_DISARM_TILT:		return "disarmed (tilt over limit)";
 		case EV_DISARM_IMU:			return "disarmed (IMU error)";
 		case EV_DISARM_AUTO:		return "disarmed (idle timeout)";
+		case EV_DISARM_KILL:		return "disarmed (EMERGENCY STOP)";
 		case EV_REJECT_LINK:		return "arm rejected: no controller link";
 		case EV_REJECT_THROTTLE:	return "arm rejected: throttle stick is pushed up";
 		case EV_REJECT_TILT:		return "arm rejected: not level";
 		case EV_REJECT_CALIB:		return "arm rejected: calibration failed";
+		case EV_HINT_HOLD_ARM:		return "hold START for 1s to arm";
+		case EV_HINT_HOLD_DISARM:	return "flying: hold START for 1s to disarm (L1+R1 = emergency stop)";
 		case EV_TUNE_ON:			return "tuning mode ON";
 		case EV_TUNE_OFF:			return "tuning mode OFF (flight mode)";
 		case EV_TUNE_REJECT_ARMED:	return "tuning mode rejected: disarm first";
