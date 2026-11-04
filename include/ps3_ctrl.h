@@ -29,9 +29,9 @@ class PS3Controller {
 		bool link_alive = false;
 
 		float throttle_stick	= 0;	//左スティック上下（上が正、-1.0〜+1.0）
-		float pitch_target		= 0;
-		float roll_target		= 0;
-		float yaw_rate_target	= 0;
+		float pitch_stick		= 0;	//右スティック上下（符号は PITCH_STICK_DIR、-1.0〜+1.0）
+		float roll_stick		= 0;	//右スティック左右（符号は ROLL_STICK_DIR、-1.0〜+1.0）
+		float yaw_stick			= 0;	//左スティック左右（符号は YAW_STICK_DIR、-1.0〜+1.0）
 	
 		int8_t lx 				= 0;
 		int8_t ly 				= 0;
@@ -70,9 +70,10 @@ class PS3Controller {
 		void debug_raw_param();
 		void debug_target_param();
 		float getThrottleStick();
-		float getRoll();
-		float getPitch();
-		float getYawRate();
+		//スティックの倒し量（-1.0〜+1.0）。最大角などへの換算は DroneController が行う
+		float getRollStick();
+		float getPitchStick();
+		float getYawStick();
 		static float stickNorm(int8_t raw);
 
 		//ボタンのイベント（ButtonTracker::PRESSED / SHORT / LONG の組み合わせ）

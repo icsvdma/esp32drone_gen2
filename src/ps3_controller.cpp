@@ -32,15 +32,15 @@ void PS3Controller::update(uint32_t now_ms){
 
 		// 右スティック上下 → ピッチ
 		ry = Ps3.data.analog.stick.ry;
-		pitch_target = PITCH_STICK_DIR * stickNorm(ry) * MAX_ANGLE_DEG; // -30度～+30度
+		pitch_stick = PITCH_STICK_DIR * stickNorm(ry);
 
 		// 右スティック左右 → ロール
 		rx = Ps3.data.analog.stick.rx;
-		roll_target = ROLL_STICK_DIR * stickNorm(rx) * MAX_ANGLE_DEG; // -30度～+30度
+		roll_stick = ROLL_STICK_DIR * stickNorm(rx);
 
 		// 左スティック左右 → ヨー角速度
 		lx = Ps3.data.analog.stick.lx;
-		yaw_rate_target = YAW_STICK_DIR * stickNorm(lx) * MAX_YAW_RATE_DPS;
+		yaw_stick = YAW_STICK_DIR * stickNorm(lx);
 
 		ctrl_battery = (uint8_t)Ps3.data.status.battery;
 
@@ -49,9 +49,9 @@ void PS3Controller::update(uint32_t now_ms){
 	else{
 		//通信断: 最後の入力を保持せず、すべて0にする
 		throttle_stick	= 0;
-		pitch_target	= 0;
-		roll_target		= 0;
-		yaw_rate_target	= 0;
+		pitch_stick		= 0;
+		roll_stick		= 0;
+		yaw_stick		= 0;
 		//ボタンも「離した」扱いにする（離したことによる短押しイベントは出さない）
 		clearButtons();
 	}
@@ -106,15 +106,14 @@ float PS3Controller::stickNorm(int8_t raw){
 float PS3Controller::getThrottleStick(){
 	return throttle_stick;
 }
-float PS3Controller::getRoll(){
-	return roll_target;
+float PS3Controller::getRollStick(){
+	return roll_stick;
 }
-float PS3Controller::getPitch(){
-	return 	pitch_target;
+float PS3Controller::getPitchStick(){
+	return pitch_stick;
 }
-
-float PS3Controller::getYawRate(){
-	return yaw_rate_target;
+float PS3Controller::getYawStick(){
+	return yaw_stick;
 }
 
 void PS3Controller::debug_raw_param(){
@@ -126,9 +125,9 @@ void PS3Controller::debug_raw_param(){
 
 void PS3Controller::debug_target_param(){
 	printf("throttle_stick : %.2f \t",throttle_stick);
-	printf("target_roll : %.2f \t",roll_target);
-	printf("target_pitch : %.2f \t",pitch_target);
-	printf("target_yaw_rate : %.1f \n",yaw_rate_target);
+	printf("roll_stick : %.2f \t",roll_stick);
+	printf("pitch_stick : %.2f \t",pitch_stick);
+	printf("yaw_stick : %.2f \n",yaw_stick);
 }
 
 bool PS3Controller::isControllerBatteryDying(){

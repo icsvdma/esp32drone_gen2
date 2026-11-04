@@ -22,8 +22,9 @@ void DroneController::init() {
 	//センサのフィルタを使用するために初期化を行う（制御周期と一致させる）
 	madgwick_user.init(CONTROL_HZ);
 
-	//ゲインを読み込む（NVSに保存値がなければ初期値）
+	//ゲインと操作の設定を読み込む（NVSに保存値がなければ初期値）
 	loadGains();
+	loadUiSettings();
 
 	//コントローラの初期化
 	ps3ctrl.init();
@@ -100,6 +101,11 @@ void DroneController::service() {
 			case EV_TUNE_CHANGED:
 				printGains();
 				break;
+			case EV_MODE_BEGINNER:
+			case EV_MODE_NORMAL:
+				printf("[ui] %s\n", uiEventStr(ev));
+				saveUiSettings();		//ディスアーム中だけ切り替わるので、ここで保存してよい
+				break;
 			case EV_SAVE_REQUEST:
 				//NVS書き込み中はフラッシュアクセスで両コアが止まることがあるため、ディスアーム中だけ実行する
 				if (!armed) {
@@ -122,8 +128,8 @@ void DroneController::service() {
 
 	//コントローラへの通知を進める
 	//  START を押している間は弱く振動（長押しの合図）
-	//  プレイヤーLED: 飛行モードは 1、調整モードは選んでいる項目の番号（1〜6）
-	int player = tune_mode ? (int)tune_item + 1 : 1;
+	//  プレイヤーLED: 飛行モードは 通常=1 / 初心者=2、調整モードは選んでいる項目の番号（1〜6）
+	int player = tune_mode ? (int)tune_item + 1 : (beginner ? 2 : 1);
 	ps3ctrl.serviceFeedback(now_ms, ps3ctrl.btnHeld(BTN_START), player);
 
 	//調整モードで選んでいる項目をLEDに反映する（変化したときだけ更新）
@@ -155,6 +161,8 @@ void DroneController::service() {
 void DroneController::feedbackForEvent(uint8_t ev, uint32_t now_ms) {
 	switch (ev) {
 		case EV_ARMED:
+		case EV_MODE_BEGINNER:
+		case EV_MODE_NORMAL:
 		case EV_TUNE_ON:
 		case EV_TUNE_OFF:
 		case EV_TUNE_RESET:
@@ -176,6 +184,7 @@ void DroneController::feedbackForEvent(uint8_t ev, uint32_t now_ms) {
 		case EV_TUNE_REJECT_ARMED:
 		case EV_TUNE_LIMIT:
 		case EV_SAVE_REJECT_ARMED:
+		case EV_MODE_REJECT_ARMED:
 		case EV_HINT_HOLD_ARM:
 		case EV_HINT_HOLD_DISARM:
 			ps3ctrl.playRumble(2, FB_SHORT_MS, FB_GAP_MS, FB_RUMBLE_INTENSITY, now_ms);
@@ -261,6 +270,15 @@ void DroneController::handleButtons(uint32_t now_ms) {
 
 	//飛行モードでは、ここから下のボタン（十字キーなど）は何もしない（誤操作の防止）
 	if (!tune_mode) {
+		//△ 短押し: 初心者モード／通常モードの切り替え（ディスアーム中だけ）
+		if (ps3ctrl.btnEvent(BTN_TRIANGLE) & ButtonTracker::SHORT) {
+			if (armed) {
+				ui_events.push(EV_MODE_REJECT_ARMED);
+			} else {
+				beginner = !beginner;
+				ui_events.push(beginner ? EV_MODE_BEGINNER : EV_MODE_NORMAL);
+			}
+		}
 		return;
 	}
 
@@ -323,6 +341,35 @@ void DroneController::applyTuneValues() {
 	pid_pitch_rate.setGains(tune_val[TUNE_RATE_KP], tune_val[TUNE_RATE_KI], tune_val[TUNE_RATE_KD]);
 	angle_kp = tune_val[TUNE_ANGLE_KP];
 	pid_yaw_rate.setGains(tune_val[TUNE_YAW_KP], tune_val[TUNE_YAW_KI], YAW_RATE_KD);
+}
+
+//==========================================================
+//飛行モードの設定（通常／初心者）
+//==========================================================
+
+const DroneController::FlightProfile& DroneController::profile() const {
+	static const FlightProfile NORMAL   = { MAX_ANGLE_DEG,          MAX_YAW_RATE_DPS,          THROTTLE_MAX,          THROTTLE_RATE };
+	static const FlightProfile BEGINNER = { BEGINNER_MAX_ANGLE_DEG, BEGINNER_MAX_YAW_RATE_DPS, BEGINNER_THROTTLE_MAX, BEGINNER_THROTTLE_RATE };
+	return beginner ? BEGINNER : NORMAL;
+}
+
+void DroneController::loadUiSettings() {
+	Preferences prefs;
+	if (prefs.begin("ui", true)) {
+		beginner = prefs.getBool("beginner", false);
+		prefs.end();
+	}
+	printf("[ui] %s\n", uiEventStr(beginner ? EV_MODE_BEGINNER : EV_MODE_NORMAL));
+}
+
+void DroneController::saveUiSettings() {
+	Preferences prefs;
+	if (!prefs.begin("ui", false)) {
+		printf("[ui] save failed: NVS open error\n");
+		return;
+	}
+	prefs.putBool("beginner", beginner);
+	prefs.end();
 }
 
 //保存値が壊れている（NaN・負・上限超え）ときは初期値を使う
@@ -510,6 +557,9 @@ const char* DroneController::uiEventStr(uint8_t ev) {
 		case EV_TUNE_LIMIT:			return "gain is at its limit";
 		case EV_TUNE_RESET:			return "gain reset to default";
 		case EV_SAVE_REJECT_ARMED:	return "save rejected: disarm first";
+		case EV_MODE_BEGINNER:		return "BEGINNER mode (gentle: smaller angles, slower throttle)";
+		case EV_MODE_NORMAL:		return "NORMAL mode";
+		case EV_MODE_REJECT_ARMED:	return "mode change rejected: disarm first";
 		default:					return "?";
 	}
 }
@@ -523,14 +573,15 @@ void DroneController::updateThrottle(float dt) {
 		throttle = 0;
 		return;
 	}
+	const FlightProfile &prof = profile();
 	float in = ps3ctrl.getThrottleStick();
-	float rate = in * fabsf(in) * THROTTLE_RATE;		//2乗カーブ（符号は保つ）
+	float rate = in * fabsf(in) * prof.throttle_rate;	//2乗カーブ（符号は保つ）
 	if (!tune_mode && ps3ctrl.btnHeld(BTN_DOWN)) {
-		rate = -THROTTLE_RATE * THROTTLE_FAST_DESCEND_MUL;
+		rate = -prof.throttle_rate * THROTTLE_FAST_DESCEND_MUL;
 	}
 	throttle += rate * dt;
-	if (throttle < 0.0f)         throttle = 0.0f;
-	if (throttle > THROTTLE_MAX) throttle = THROTTLE_MAX;
+	if (throttle < 0.0f)              throttle = 0.0f;
+	if (throttle > prof.throttle_max) throttle = prof.throttle_max;
 }
 
 static float rateLimit(float rate) {
@@ -575,9 +626,10 @@ void DroneController::step(float dt) {
 		return;
 	}
 
-	//コントローラから目標の角度を取得して制御する（符号は flight_config.h で決める）
-	base_roll	= ps3ctrl.getRoll();
-	base_pitch	= ps3ctrl.getPitch();
+	//コントローラから目標の角度を取得して制御する（符号は flight_config.h、最大角はモードで決める）
+	const FlightProfile &prof = profile();
+	base_roll	= ps3ctrl.getRollStick()  * prof.max_angle_deg;
+	base_pitch	= ps3ctrl.getPitchStick() * prof.max_angle_deg;
 
 	//外側ループ: 角度誤差 → 目標角速度（P制御）
 	roll_rate_sp	= rateLimit(angle_kp * (base_roll  - madgwick_user.getRoll()));
@@ -589,7 +641,7 @@ void DroneController::step(float dt) {
 	pitch_output	= pid_pitch_rate.compute(pitch_rate_sp, imu.gy, dt);
 
 	//ヨー: スティックの目標角速度とジャイロZでPID（中立なら回転を止める）
-	yaw_rate_sp		= ps3ctrl.getYawRate();
+	yaw_rate_sp		= ps3ctrl.getYawStick() * prof.max_yaw_rate_dps;
 	yaw_output		= pid_yaw_rate.compute(yaw_rate_sp, imu.gz, dt);
 
 	mix(base_thrust, roll_output, pitch_output, yaw_output);

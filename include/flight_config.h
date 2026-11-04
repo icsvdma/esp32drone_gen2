@@ -27,7 +27,13 @@
 
 // スティック入力
 #define STICK_DEADBAND			6		// 中立付近の不感帯（生値, 最大127）
-#define MAX_ANGLE_DEG			30.0f	// Roll/Pitch の最大目標角度[deg]
+#define MAX_ANGLE_DEG			30.0f	// Roll/Pitch の最大目標角度[deg]（通常モード）
+
+// 初心者モード（ディスアーム中に △ で切り替え。数値は仮の値）
+#define BEGINNER_MAX_ANGLE_DEG		15.0f
+#define BEGINNER_MAX_YAW_RATE_DPS	60.0f
+#define BEGINNER_THROTTLE_MAX		716		// MOTOR_PWM_MAX の約70%
+#define BEGINNER_THROTTLE_RATE		400.0f
 
 // スティック → 目標角の符号（符号はここだけで決める）
 // 目標角の正の向きは Madgwick の Roll/Pitch の正の向きと同じ
@@ -78,7 +84,7 @@
 
 // ヨー制御（6軸IMUではヨー角の絶対値は分からないので、角速度だけを制御する）
 // スティック中立で「回転速度 0」を保つ
-#define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度
+#define MAX_YAW_RATE_DPS		120.0f	// 左スティック左右いっぱいでの目標ヨー角速度（通常モード）
 #define YAW_RATE_KP_DEFAULT		1.0f	// 初期値（未チューニングの仮値）。調整モードで変更できる
 #define YAW_RATE_KI_DEFAULT		0.5f	// 初期値（未チューニングの仮値）。調整モードで変更できる
 #define YAW_RATE_KD				0.0f	// 固定

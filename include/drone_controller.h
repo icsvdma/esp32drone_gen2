@@ -72,6 +72,9 @@ class DroneController {
 			EV_TUNE_RESET,
 			EV_SAVE_REQUEST,
 			EV_SAVE_REJECT_ARMED,
+			EV_MODE_BEGINNER,
+			EV_MODE_NORMAL,
+			EV_MODE_REJECT_ARMED,
 		};
 		EventRing<16> ui_events;
 		static const char* uiEventStr(uint8_t ev);
@@ -113,6 +116,18 @@ class DroneController {
 		volatile uint8_t tune_item		= TUNE_RATE_KP;
 		float tune_val[TUNE_NUM]		= {0};
 		float angle_kp					= ANGLE_KP_DEFAULT;
+
+		// 飛行モードの設定（通常／初心者）。ディスアーム中だけ切り替えられる
+		struct FlightProfile {
+			float max_angle_deg;
+			float max_yaw_rate_dps;
+			float throttle_max;
+			float throttle_rate;
+		};
+		volatile bool beginner			= false;
+		const FlightProfile& profile() const;
+		void loadUiSettings();
+		void saveUiSettings();
 
 		void handleButtons(uint32_t now_ms);
 		void stepTune(int dir);
